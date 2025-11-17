@@ -1,0 +1,6 @@
+@TES_Learning_App.API_HostAddress = http://localhost:5166
+
+GET {{TES_Learning_App.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
