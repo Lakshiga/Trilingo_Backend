@@ -45,16 +45,11 @@ jobs:
       - name: Create deployment package
         run: |
           PUBLISH_DIR="${{ steps.backend-dir.outputs.BACKEND_DIR }}/TES_Learning_App.API/publish"
-          TEMP_PACKAGE_DIR="$(mktemp -d)"
-          echo "Copying published files to temp dir: $TEMP_PACKAGE_DIR"
-          rsync -a --delete "$PUBLISH_DIR/" "$TEMP_PACKAGE_DIR/"
-          cd "$TEMP_PACKAGE_DIR"
-          tar -czf deployment-package.tar.gz .
-          echo "Package files:"
-          ls -lh deployment-package.tar.gz
-          mv deployment-package.tar.gz "${GITHUB_WORKSPACE}/deployment-package.tar.gz"
+          PACKAGE_NAME="deployment-package.zip"
+          echo "Creating zip package from $PUBLISH_DIR"
+          cd "$PUBLISH_DIR"
+          zip -r "${GITHUB_WORKSPACE}/${PACKAGE_NAME}" .
           cd "${GITHUB_WORKSPACE}"
-          rm -rf "$TEMP_PACKAGE_DIR"
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
@@ -63,7 +58,7 @@ jobs:
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
       - name: Copy deployment package to EC2
         run: |
-          scp -i ~/.ssh/id_rsa deployment-package.tar.gz ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+          scp -i ~/.ssh/id_rsa deployment-package.zip ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
       - name: Deploy to EC2 (Preserve Existing Files)
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
@@ -98,7 +93,7 @@ jobs:
             # Extract new deployment package to temporary location
             echo "📦 Extracting deployment package..."
             TEMP_DIR=$(mktemp -d)
-            sudo tar -xzf /tmp/deployment-package.tar.gz -C $TEMP_DIR
+            sudo unzip -q /tmp/deployment-package.zip -d $TEMP_DIR
             
             # Preserve critical files and directories
             echo "🔒 Preserving existing files..."
@@ -137,7 +132,7 @@ jobs:
             
             # Cleanup temporary directory
             sudo rm -rf $TEMP_DIR
-            sudo rm -f /tmp/deployment-package.tar.gz
+            sudo rm -f /tmp/deployment-package.zip
             
             # Restart the service
             echo "🔄 Restarting service..."
