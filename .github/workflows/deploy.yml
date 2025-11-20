@@ -30,7 +30,6 @@ jobs:
             echo "❌ Backend directory not found!"
             exit 1
           fi
-
       - name: Restore dependencies
         run: dotnet restore
         working-directory: ${{ steps.backend-dir.outputs.BACKEND_DIR }}
@@ -49,18 +48,15 @@ jobs:
           tar -czf ../../deployment-package.tar.gz .
           cd ../../..
           mv ${{ steps.backend-dir.outputs.BACKEND_DIR }}/deployment-package.tar.gz .
-
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-
       - name: Copy deployment package to EC2
         run: |
           scp -i ~/.ssh/id_rsa deployment-package.tar.gz ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
-
       - name: Deploy to EC2 (Preserve Existing Files)
         run: |
           ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
@@ -143,26 +139,24 @@ jobs:
             if [ ! -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
               echo "📝 Creating systemd service..."
               cat <<'EOF' | sudo tee /etc/systemd/system/$SERVICE_NAME.service > /dev/null
-[Unit]
-Description=Trilingo Learning App Backend API
-After=network.target
-
-[Service]
-Type=notify
-User=${{ secrets.EC2_USER }}
-WorkingDirectory=$APP_DIR
-ExecStart=/usr/bin/dotnet $APP_DIR/TES_Learning_App.API.dll
-Restart=always
-RestartSec=10
-KillSignal=SIGINT
-SyslogIdentifier=trilingo-backend
-Environment=ASPNETCORE_ENVIRONMENT=Production
-Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
-
-[Install]
-WantedBy=multi-user.target
-EOF
-              sudo sed -i 's/^[[:space:]]*//' /etc/systemd/system/$SERVICE_NAME.service
+                [Unit]
+                Description=Trilingo Learning App Backend API
+                After=network.target
+                [Service]
+                Type=notify
+                User=${{ secrets.EC2_USER }}
+                WorkingDirectory=$APP_DIR
+                ExecStart=/usr/bin/dotnet $APP_DIR/TES_Learning_App.API.dll
+                Restart=always
+                RestartSec=10
+                KillSignal=SIGINT
+                SyslogIdentifier=trilingo-backend
+                Environment=ASPNETCORE_ENVIRONMENT=Production
+                Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+                [Install]
+                WantedBy=multi-user.target
+                EOF
+                sudo sed -i 's/^[[:space:]]*//' /etc/systemd/system/$SERVICE_NAME.service
               sudo systemctl daemon-reload
               sudo systemctl enable $SERVICE_NAME
             fi
@@ -198,8 +192,6 @@ EOF
               exit 1
             fi
           ENDSSH
-
       - name: Cleanup SSH key
         if: always()
         run: rm -f ~/.ssh/id_rsa
-
