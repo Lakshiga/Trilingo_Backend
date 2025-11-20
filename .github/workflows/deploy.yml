@@ -142,26 +142,27 @@ jobs:
             # Create systemd service file if it doesn't exist
             if [ ! -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
               echo "📝 Creating systemd service..."
-              sudo tee /etc/systemd/system/$SERVICE_NAME.service > /dev/null <<EOF
-[Unit]
-Description=Trilingo Learning App Backend API
-After=network.target
+              sudo tee /etc/systemd/system/$SERVICE_NAME.service > /dev/null <<'EOF'
+                [Unit]
+                Description=Trilingo Learning App Backend API
+                After=network.target
 
-[Service]
-Type=notify
-User=${{ secrets.EC2_USER }}
-WorkingDirectory=$APP_DIR
-ExecStart=/usr/bin/dotnet $APP_DIR/TES_Learning_App.API.dll
-Restart=always
-RestartSec=10
-KillSignal=SIGINT
-SyslogIdentifier=trilingo-backend
-Environment=ASPNETCORE_ENVIRONMENT=Production
-Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+                [Service]
+                Type=notify
+                User=${{ secrets.EC2_USER }}
+                WorkingDirectory=$APP_DIR
+                ExecStart=/usr/bin/dotnet $APP_DIR/TES_Learning_App.API.dll
+                Restart=always
+                RestartSec=10
+                KillSignal=SIGINT
+                SyslogIdentifier=trilingo-backend
+                Environment=ASPNETCORE_ENVIRONMENT=Production
+                Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 
-[Install]
-WantedBy=multi-user.target
+                [Install]
+                WantedBy=multi-user.target
 EOF
+              sudo sed -i 's/^[[:space:]]*//' /etc/systemd/system/$SERVICE_NAME.service
               sudo systemctl daemon-reload
               sudo systemctl enable $SERVICE_NAME
             fi
