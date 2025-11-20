@@ -1,0 +1,357 @@
+# 📝 Complete GitHub Setup - Step by Step
+
+## 🎯 What You Need to Do in GitHub
+
+### ✅ Step 1: Create Workflow File
+
+1. **Go to your repository:**
+   ```
+   https://github.com/Lakshiga/Trilingo_Backend
+   ```
+
+2. **Click "Add file" button** (top right) → **"Create new file"**
+
+3. **Type this exact path:**
+   ```
+   .github/workflows/deploy.yml
+   ```
+   ⚠️ **Important:** Start with `.github` (with the dot!)
+
+4. **Copy and paste this entire workflow content:**
+
+   ```yaml
+   name: Deploy .NET Backend to AWS EC2
+
+   on:
+     push:
+       branches:
+         - master
+         - main
+
+   jobs:
+     deploy:
+       runs-on: ubuntu-latest
+
+       steps:
+         - name: Checkout source
+           uses: actions/checkout@v3
+
+         - name: Setup .NET
+           uses: actions/setup-dotnet@v4
+           with:
+             dotnet-version: '9.0.x'
+
+         - name: Detect backend directory
+           id: backend-dir
+           run: |
+             if [ -d "Trilingo_Learning_App_Backend" ]; then
+               echo "BACKEND_DIR=Trilingo_Learning_App_Backend" >> $GITHUB_OUTPUT
+             elif [ -f "TES_Learning_App.API/TES_Learning_App.API.csproj" ]; then
+               echo "BACKEND_DIR=." >> $GITHUB_OUTPUT
+             else
+               echo "❌ Backend directory not found!"
+               exit 1
+             fi
+
+         - name: Restore dependencies
+           run: dotnet restore
+           working-directory: ${{ steps.backend-dir.outputs.BACKEND_DIR }}
+
+         - name: Build application
+           run: dotnet build --configuration Release --no-restore
+           working-directory: ${{ steps.backend-dir.outputs.BACKEND_DIR }}
+
+         - name: Publish application
+           run: dotnet publish TES_Learning_App.API/TES_Learning_App.API.csproj --configuration Release --output ./TES_Learning_App.API/publish --no-build
+           working-directory: ${{ steps.backend-dir.outputs.BACKEND_DIR }}
+
+         - name: Create deployment package
+           run: |
+             cd ${{ steps.backend-dir.outputs.BACKEND_DIR }}/TES_Learning_App.API/publish
+             tar -czf ../../deployment-package.tar.gz .
+             cd ../../..
+             mv ${{ steps.backend-dir.outputs.BACKEND_DIR }}/deployment-package.tar.gz .
+
+         - name: Configure SSH
+           run: |
+             mkdir -p ~/.ssh
+             echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+             chmod 600 ~/.ssh/id_rsa
+             ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+         - name: Copy deployment package to EC2
+           run: |
+             scp -i ~/.ssh/id_rsa deployment-package.tar.gz ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+
+         - name: Deploy to EC2 (Preserve Existing Files)
+           run: |
+             ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+               set -e
+               
+               # Configuration
+               APP_DIR="/var/www/trilingo-backend"
+               BACKUP_DIR="/var/www/trilingo-backend-backup"
+               SERVICE_NAME="trilingo-backend"
+               
+               echo "🚀 Starting deployment..."
+               
+               # Create app directory if it doesn't exist
+               sudo mkdir -p $APP_DIR
+               
+               # Create backup directory
+               sudo mkdir -p $BACKUP_DIR
+               
+               # Stop the service if it's running
+               if sudo systemctl is-active --quiet $SERVICE_NAME; then
+                 echo "⏸️  Stopping service..."
+                 sudo systemctl stop $SERVICE_NAME || true
+               fi
+               
+               # Backup existing application (excluding data directories)
+               if [ -d "$APP_DIR" ] && [ "$(ls -A $APP_DIR)" ]; then
+                 echo "💾 Creating backup..."
+                 sudo mkdir -p $BACKUP_DIR/$(date +%Y%m%d_%H%M%S)
+                 sudo cp -r $APP_DIR/* $BACKUP_DIR/$(date +%Y%m%d_%H%M%S)/ || true
+               fi
+               
+               # Extract new deployment package to temporary location
+               echo "📦 Extracting deployment package..."
+               TEMP_DIR=$(mktemp -d)
+               sudo tar -xzf /tmp/deployment-package.tar.gz -C $TEMP_DIR
+               
+               # Preserve critical files and directories
+               echo "🔒 Preserving existing files..."
+               
+               # Preserve wwwroot/uploads directory (user uploads)
+               if [ -d "$APP_DIR/wwwroot" ]; then
+                 echo "  - Preserving wwwroot/uploads..."
+                 sudo mkdir -p $TEMP_DIR/wwwroot
+                 sudo cp -r $APP_DIR/wwwroot/* $TEMP_DIR/wwwroot/ 2>/dev/null || true
+               fi
+               
+               # Preserve appsettings.Aws.json (AWS configuration)
+               if [ -f "$APP_DIR/appsettings.Aws.json" ]; then
+                 echo "  - Preserving appsettings.Aws.json..."
+                 sudo cp $APP_DIR/appsettings.Aws.json $TEMP_DIR/appsettings.Aws.json
+               fi
+               
+               # Preserve any custom configuration files
+               if [ -f "$APP_DIR/appsettings.Production.json" ]; then
+                 echo "  - Preserving appsettings.Production.json..."
+                 sudo cp $APP_DIR/appsettings.Production.json $TEMP_DIR/appsettings.Production.json
+               fi
+               
+               # Remove old application files (except preserved directories)
+               echo "🧹 Cleaning old files..."
+               sudo find $APP_DIR -mindepth 1 -maxdepth 1 ! -name "wwwroot" -exec rm -rf {} + || true
+               
+               # Copy new files to application directory
+               echo "📋 Copying new files..."
+               sudo cp -r $TEMP_DIR/* $APP_DIR/
+               
+               # Set proper permissions
+               echo "🔐 Setting permissions..."
+               sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} $APP_DIR
+               sudo chmod +x $APP_DIR/TES_Learning_App.API || true
+               
+               # Cleanup temporary directory
+               sudo rm -rf $TEMP_DIR
+               sudo rm -f /tmp/deployment-package.tar.gz
+               
+               # Restart the service
+               echo "🔄 Restarting service..."
+               
+               # Create systemd service file if it doesn't exist
+               if [ ! -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
+                 echo "📝 Creating systemd service..."
+                 sudo tee /etc/systemd/system/$SERVICE_NAME.service > /dev/null <<EOF
+   [Unit]
+   Description=Trilingo Learning App Backend API
+   After=network.target
+
+   [Service]
+   Type=notify
+   User=${{ secrets.EC2_USER }}
+   WorkingDirectory=$APP_DIR
+   ExecStart=/usr/bin/dotnet $APP_DIR/TES_Learning_App.API.dll
+   Restart=always
+   RestartSec=10
+   KillSignal=SIGINT
+   SyslogIdentifier=trilingo-backend
+   Environment=ASPNETCORE_ENVIRONMENT=Production
+   Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+   [Install]
+   WantedBy=multi-user.target
+   EOF
+                 sudo systemctl daemon-reload
+                 sudo systemctl enable $SERVICE_NAME
+               fi
+               
+               # Start the service
+               sudo systemctl start $SERVICE_NAME
+               sudo systemctl daemon-reload
+               
+               # Wait a moment and check service status
+               sleep 3
+               if sudo systemctl is-active --quiet $SERVICE_NAME; then
+                 echo "✅ Service started successfully!"
+                 sudo systemctl status $SERVICE_NAME --no-pager -l
+               else
+                 echo "❌ Service failed to start. Checking logs..."
+                 sudo journalctl -u $SERVICE_NAME --no-pager -l -n 50
+                 exit 1
+               fi
+               
+               echo "🎉 Deployment completed successfully!"
+             ENDSSH
+
+         - name: Verify deployment
+           run: |
+             sleep 5
+             ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+               SERVICE_NAME="trilingo-backend"
+               if sudo systemctl is-active --quiet $SERVICE_NAME; then
+                 echo "✅ Backend service is running"
+                 sudo systemctl status $SERVICE_NAME --no-pager -l | head -20
+               else
+                 echo "❌ Backend service is not running"
+                 exit 1
+               fi
+             ENDSSH
+
+         - name: Cleanup SSH key
+           if: always()
+           run: rm -f ~/.ssh/id_rsa
+   ```
+
+5. **Scroll down, write commit message:**
+   ```
+   Add automated deployment workflow
+   ```
+
+6. **Click "Commit new file"** (green button)
+
+---
+
+### ✅ Step 2: Add GitHub Secrets
+
+1. **Go to Settings:**
+   ```
+   https://github.com/Lakshiga/Trilingo_Backend/settings
+   ```
+
+2. **Click "Secrets and variables"** (left sidebar) → **"Actions"**
+
+3. **Click "New repository secret"** button
+
+#### Secret 1: EC2_HOST
+
+- **Name:** `EC2_HOST`
+- **Secret:** Your EC2 public IP address
+  - Example: `54.123.45.67`
+  - Or: `ec2-54-123-45-67.compute-1.amazonaws.com`
+- **Click "Add secret"**
+
+#### Secret 2: EC2_USER
+
+- **Click "New repository secret"** again
+- **Name:** `EC2_USER`
+- **Secret:** `ubuntu` (or `ec2-user` if Amazon Linux)
+- **Click "Add secret"**
+
+#### Secret 3: EC2_SSH_PRIVATE_KEY
+
+- **Click "New repository secret"** again
+- **Name:** `EC2_SSH_PRIVATE_KEY`
+- **Secret:** Your complete SSH private key
+  - Open terminal/PowerShell on your computer
+  - Run: `cat ~/.ssh/id_rsa` (or `type C:\Users\ASUS\.ssh\id_rsa` on Windows)
+  - Copy the ENTIRE output including:
+    ```
+    -----BEGIN RSA PRIVATE KEY-----
+    (all the content here)
+    -----END RSA PRIVATE KEY-----
+    ```
+- **Paste it in the Secret field**
+- **Click "Add secret"**
+
+---
+
+### ✅ Step 3: Test the Deployment
+
+1. **Make a small change** to any file in your repository
+   - For example, add a comment to `Program.cs`
+
+2. **Commit and push:**
+   ```bash
+   git add .
+   git commit -m "Test automated deployment"
+   git push origin master
+   ```
+
+3. **Check GitHub Actions:**
+   - Go to: https://github.com/Lakshiga/Trilingo_Backend/actions
+   - You should see a workflow run starting
+   - Click on it to see progress
+   - ✅ Green checkmark = Success!
+   - ❌ Red X = Check logs for errors
+
+---
+
+## 📋 Quick Checklist
+
+Before testing, make sure:
+
+- [ ] Workflow file created at `.github/workflows/deploy.yml`
+- [ ] `EC2_HOST` secret added
+- [ ] `EC2_USER` secret added  
+- [ ] `EC2_SSH_PRIVATE_KEY` secret added (complete key)
+- [ ] .NET 9.0 installed on EC2 (see EC2 setup below)
+- [ ] Application directory exists on EC2: `/var/www/trilingo-backend`
+
+---
+
+## 🖥️ EC2 Setup (One-time)
+
+SSH into your EC2 instance and run:
+
+```bash
+# Install .NET 9.0
+wget https://dot.net/v1/dotnet-install.sh
+chmod +x dotnet-install.sh
+sudo ./dotnet-install.sh --channel 9.0 --runtime aspnetcore
+
+# Add to PATH
+echo 'export DOTNET_ROOT=$HOME/.dotnet' >> ~/.bashrc
+echo 'export PATH=$PATH:$HOME/.dotnet:$HOME/.dotnet/tools' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify
+dotnet --version
+
+# Create app directory
+sudo mkdir -p /var/www/trilingo-backend
+sudo chown -R $USER:$USER /var/www/trilingo-backend
+```
+
+---
+
+## 🎉 Done!
+
+After setup, every push to `master` branch will automatically deploy your backend to AWS EC2!
+
+## ❓ Troubleshooting
+
+**Workflow not running?**
+- Check if file is at `.github/workflows/deploy.yml` (root level)
+- Ensure you're pushing to `master` branch
+
+**SSH connection fails?**
+- Verify all 3 secrets are correct
+- Test SSH manually: `ssh ubuntu@YOUR_EC2_IP`
+
+**Service fails to start?**
+- SSH to EC2: `ssh ubuntu@YOUR_EC2_IP`
+- Check logs: `sudo journalctl -u trilingo-backend -n 50`
+
