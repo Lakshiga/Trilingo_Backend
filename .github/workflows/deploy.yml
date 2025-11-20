@@ -47,7 +47,7 @@ jobs:
           PUBLISH_DIR="${{ steps.backend-dir.outputs.BACKEND_DIR }}/TES_Learning_App.API/publish"
           TEMP_PACKAGE_DIR="$(mktemp -d)"
           echo "Copying published files to temp dir: $TEMP_PACKAGE_DIR"
-          cp -R "$PUBLISH_DIR/"* "$TEMP_PACKAGE_DIR/"
+          rsync -a --delete "$PUBLISH_DIR/" "$TEMP_PACKAGE_DIR/"
           cd "$TEMP_PACKAGE_DIR"
           tar -czf deployment-package.tar.gz .
           echo "Package files:"
