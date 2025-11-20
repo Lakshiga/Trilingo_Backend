@@ -44,12 +44,17 @@ jobs:
 
       - name: Create deployment package
         run: |
-          cd ${{ steps.backend-dir.outputs.BACKEND_DIR }}/TES_Learning_App.API/publish
+          PUBLISH_DIR="${{ steps.backend-dir.outputs.BACKEND_DIR }}/TES_Learning_App.API/publish"
+          TEMP_PACKAGE_DIR="$(mktemp -d)"
+          echo "Copying published files to temp dir: $TEMP_PACKAGE_DIR"
+          cp -R "$PUBLISH_DIR/"* "$TEMP_PACKAGE_DIR/"
+          cd "$TEMP_PACKAGE_DIR"
           tar -czf deployment-package.tar.gz .
           echo "Package files:"
-          ls -lh
-          mv deployment-package.tar.gz ../../../deployment-package.tar.gz
-          cd ../../../
+          ls -lh deployment-package.tar.gz
+          mv deployment-package.tar.gz "${GITHUB_WORKSPACE}/deployment-package.tar.gz"
+          cd "${GITHUB_WORKSPACE}"
+          rm -rf "$TEMP_PACKAGE_DIR"
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
