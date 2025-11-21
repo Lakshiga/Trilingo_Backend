@@ -11,6 +11,7 @@ namespace TES_Learning_App.Application_Layer.Interfaces.IServices
     public interface IActivityTypeService
     {
         Task<IEnumerable<ActivityTypeDto>> GetAllAsync();
+        Task<IEnumerable<ActivityTypeDto>> GetByMainActivityAsync(int mainActivityId);
         Task<ActivityTypeDto?> GetByIdAsync(int id);
         Task<ActivityTypeDto> CreateAsync(CreateActivityTypeDto dto);
         Task UpdateAsync(int id, UpdateActivityTypeDto dto);

@@ -14,6 +14,34 @@ namespace TES_Learning_App.Application_Layer.Services
     public class ActivityTypeService : IActivityTypeService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private static readonly IReadOnlyDictionary<string, string[]> MainActivityActivityTypeMap =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Learning"] = new[] { "Flash Card" },
+                ["Practice"] = new[]
+                {
+                    "Matching",
+                    "Fill in the blanks",
+                    "MCQ Activity",
+                    "True / False",
+                    "Scrumble Activity",
+                    "Memory Pair Activity"
+                },
+                ["Listening"] = new[]
+                {
+                    "Song Player",
+                    "Story Player",
+                    "Pronunciation Activity"
+                },
+                ["Games"] = new[]
+                {
+                    "Triple Blast Activity",
+                    "Bubble Blast Activity",
+                    "Group Sorter Activity"
+                },
+                ["Videos"] = Array.Empty<string>(),
+                ["Conversations"] = Array.Empty<string>()
+            };
 
         public ActivityTypeService(IUnitOfWork unitOfWork)
         {
@@ -54,6 +82,42 @@ namespace TES_Learning_App.Application_Layer.Services
             return activityTypes.Select(MapToDto);
         }
 
+        public async Task<IEnumerable<ActivityTypeDto>> GetByMainActivityAsync(int mainActivityId)
+        {
+            var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(mainActivityId);
+            if (mainActivity == null)
+            {
+                return Enumerable.Empty<ActivityTypeDto>();
+            }
+
+            var mainActivityKey = NormalizeName(mainActivity.Name_en)
+                                  ?? NormalizeName(mainActivity.Name_ta)
+                                  ?? NormalizeName(mainActivity.Name_si);
+
+            if (string.IsNullOrWhiteSpace(mainActivityKey))
+            {
+                return Enumerable.Empty<ActivityTypeDto>();
+            }
+
+            if (!MainActivityActivityTypeMap.TryGetValue(mainActivityKey, out var allowedTypeNames) ||
+                allowedTypeNames.Length == 0)
+            {
+                return Enumerable.Empty<ActivityTypeDto>();
+            }
+
+            var allowedNamesSet = new HashSet<string>(
+                allowedTypeNames
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Select(name => name.Trim()),
+                StringComparer.OrdinalIgnoreCase);
+
+            var allTypes = await _unitOfWork.ActivityTypeRepository.GetAllAsync();
+
+            return allTypes
+                .Where(type => allowedNamesSet.Contains(NormalizeName(type.Name_en) ?? string.Empty))
+                .Select(MapToDto);
+        }
+
         public async Task<ActivityTypeDto?> GetByIdAsync(int id)
         {
             var activityType = await _unitOfWork.ActivityTypeRepository.GetByIdAsync(id);
@@ -87,6 +151,16 @@ namespace TES_Learning_App.Application_Layer.Services
                 Name_si = activityType.Name_si,
                 JsonMethod = activityType.JsonMethod
             };
+        }
+
+        private static string? NormalizeName(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            return value.Trim();
         }
     }
 }

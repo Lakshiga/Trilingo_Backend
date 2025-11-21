@@ -22,6 +22,14 @@ namespace TES_Learning_App.API.Controllers
             return Ok(await _activityTypeService.GetAllAsync());
         }
 
+        [HttpGet("by-main-activity/{mainActivityId}")]
+        [AllowAnonymous]
+        public async Task<ActionResult<IEnumerable<ActivityTypeDto>>> GetByMainActivity(int mainActivityId)
+        {
+            var activityTypes = await _activityTypeService.GetByMainActivityAsync(mainActivityId);
+            return Ok(activityTypes);
+        }
+
         [HttpGet("{id}")]
         public async Task<ActionResult<ActivityTypeDto>> GetById(int id)
         {
