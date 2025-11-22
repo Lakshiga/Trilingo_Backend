@@ -24,6 +24,10 @@ namespace TES_Learning_App.Domain.Entities
 
         public string? JsonMethod { get; set; } // Stores the JSON template for this activity type
 
+        // Relationship to MainActivity
+        public int MainActivityId { get; set; } // Foreign Key
+        public MainActivity MainActivity { get; set; } = null!; // Navigation Property
+
         public ICollection<Activity> Activities { get; set; } = new List<Activity>();
     }
 }

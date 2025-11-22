@@ -12,5 +12,6 @@ namespace TES_Learning_App.Application_Layer.DTOs.ActivityType.Response
         public string Name_ta { get; set; }
         public string Name_si { get; set; }
         public string? JsonMethod { get; set; }
+        public int MainActivityId { get; set; }
     }
 }

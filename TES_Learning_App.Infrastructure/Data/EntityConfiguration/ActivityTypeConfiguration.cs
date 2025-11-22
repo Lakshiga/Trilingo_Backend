@@ -29,6 +29,12 @@ namespace TES_Learning_App.Infrastructure.Data.EntityConfiguration
             builder.Property(at => at.JsonMethod)
                    .HasColumnType("nvarchar(max)"); // Use max for large JSON content
 
+            // 5. Configure the MainActivity relationship
+            builder.HasOne(at => at.MainActivity)
+                   .WithMany(ma => ma.ActivityTypes)
+                   .HasForeignKey(at => at.MainActivityId)
+                   .OnDelete(DeleteBehavior.Restrict); // Prevent deletion if ActivityTypes exist
+
         }
     }
 }
