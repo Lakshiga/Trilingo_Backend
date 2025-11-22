@@ -18,5 +18,8 @@ namespace TES_Learning_App.Domain.Entities
         //public string Name { get; set; } = string.Empty; // e.g., "Speaking"
 
         public ICollection<Activity> Activities { get; set; } = new List<Activity>();
+        
+        // Relationship to ActivityTypes
+        public ICollection<ActivityType> ActivityTypes { get; set; } = new List<ActivityType>();
     }
 }

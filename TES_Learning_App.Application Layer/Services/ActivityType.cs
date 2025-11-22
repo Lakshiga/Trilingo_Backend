@@ -53,12 +53,18 @@ namespace TES_Learning_App.Application_Layer.Services
             if (string.IsNullOrWhiteSpace(dto.Name_en))
                 throw new Exception("English name is required for ActivityType.");
 
+            // Validate MainActivity exists
+            var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(dto.MainActivityId);
+            if (mainActivity == null)
+                throw new Exception($"MainActivity with ID {dto.MainActivityId} not found.");
+
             var activityType = new ActivityType
             {
                 Name_en = dto.Name_en,
                 Name_ta = dto.Name_ta,
                 Name_si = dto.Name_si,
-                JsonMethod = dto.JsonMethod
+                JsonMethod = dto.JsonMethod,
+                MainActivityId = dto.MainActivityId
             };
 
             await _unitOfWork.ActivityTypeRepository.AddAsync(activityType);
@@ -90,32 +96,39 @@ namespace TES_Learning_App.Application_Layer.Services
                 return Enumerable.Empty<ActivityTypeDto>();
             }
 
-            var mainActivityKey = NormalizeName(mainActivity.Name_en)
-                                  ?? NormalizeName(mainActivity.Name_ta)
-                                  ?? NormalizeName(mainActivity.Name_si);
-
-            if (string.IsNullOrWhiteSpace(mainActivityKey))
-            {
-                return Enumerable.Empty<ActivityTypeDto>();
-            }
-
-            if (!MainActivityActivityTypeMap.TryGetValue(mainActivityKey, out var allowedTypeNames) ||
-                allowedTypeNames.Length == 0)
-            {
-                return Enumerable.Empty<ActivityTypeDto>();
-            }
-
-            var allowedNamesSet = new HashSet<string>(
-                allowedTypeNames
-                    .Where(name => !string.IsNullOrWhiteSpace(name))
-                    .Select(name => name.Trim()),
-                StringComparer.OrdinalIgnoreCase);
-
+            // Use direct relationship - get ActivityTypes by MainActivityId
             var allTypes = await _unitOfWork.ActivityTypeRepository.GetAllAsync();
+            var filteredTypes = allTypes
+                .Where(type => type.MainActivityId == mainActivityId)
+                .Select(MapToDto)
+                .ToList();
 
-            return allTypes
-                .Where(type => allowedNamesSet.Contains(NormalizeName(type.Name_en) ?? string.Empty))
-                .Select(MapToDto);
+            // If no types found with direct relationship, try fallback to old mapping for backward compatibility
+            // This helps during transition period when some ActivityTypes might not have MainActivityId set
+            if (filteredTypes.Count == 0)
+            {
+                var mainActivityKey = NormalizeName(mainActivity.Name_en)
+                                      ?? NormalizeName(mainActivity.Name_ta)
+                                      ?? NormalizeName(mainActivity.Name_si);
+
+                if (!string.IsNullOrWhiteSpace(mainActivityKey) && 
+                    MainActivityActivityTypeMap.TryGetValue(mainActivityKey, out var allowedTypeNames) &&
+                    allowedTypeNames.Length > 0)
+                {
+                    var allowedNamesSet = new HashSet<string>(
+                        allowedTypeNames
+                            .Where(name => !string.IsNullOrWhiteSpace(name))
+                            .Select(name => name.Trim()),
+                        StringComparer.OrdinalIgnoreCase);
+
+                    filteredTypes = allTypes
+                        .Where(type => allowedNamesSet.Contains(NormalizeName(type.Name_en) ?? string.Empty))
+                        .Select(MapToDto)
+                        .ToList();
+                }
+            }
+
+            return filteredTypes;
         }
 
         public async Task<ActivityTypeDto?> GetByIdAsync(int id)
@@ -136,6 +149,17 @@ namespace TES_Learning_App.Application_Layer.Services
             {
                 activityType.JsonMethod = dto.JsonMethod;
             }
+            
+            // Update MainActivityId if provided
+            if (dto.MainActivityId.HasValue)
+            {
+                // Validate MainActivity exists
+                var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(dto.MainActivityId.Value);
+                if (mainActivity == null)
+                    throw new Exception($"MainActivity with ID {dto.MainActivityId.Value} not found.");
+                
+                activityType.MainActivityId = dto.MainActivityId.Value;
+            }
 
             await _unitOfWork.ActivityTypeRepository.UpdateAsync(activityType);
             await _unitOfWork.CompleteAsync();
@@ -149,7 +173,8 @@ namespace TES_Learning_App.Application_Layer.Services
                 Name_en = activityType.Name_en,
                 Name_ta = activityType.Name_ta,
                 Name_si = activityType.Name_si,
-                JsonMethod = activityType.JsonMethod
+                JsonMethod = activityType.JsonMethod,
+                MainActivityId = activityType.MainActivityId
             };
         }
 
