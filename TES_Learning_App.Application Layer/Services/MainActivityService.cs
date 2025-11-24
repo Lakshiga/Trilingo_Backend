@@ -64,9 +64,20 @@ namespace TES_Learning_App.Application_Layer.Services
             var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(id);
             if (mainActivity == null) throw new Exception("MainActivity not found.");
 
-            mainActivity.Name_en = dto.Name_en;
-            mainActivity.Name_ta = dto.Name_ta;
-            mainActivity.Name_si = dto.Name_si;
+            // Only update fields that are provided (not null)
+            // This allows partial updates and prevents overwriting with null values
+            if (dto.Name_en != null)
+            {
+                mainActivity.Name_en = dto.Name_en;
+            }
+            if (dto.Name_ta != null)
+            {
+                mainActivity.Name_ta = dto.Name_ta;
+            }
+            if (dto.Name_si != null)
+            {
+                mainActivity.Name_si = dto.Name_si;
+            }
 
             await _unitOfWork.MainActivityRepository.UpdateAsync(mainActivity);
             await _unitOfWork.CompleteAsync();

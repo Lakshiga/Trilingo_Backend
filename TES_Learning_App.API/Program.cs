@@ -6,6 +6,7 @@ using TES_Learning_App.Infrastructure.Data;
 using TES_Learning_App.Infrastructure.Data.DbIntializers_Seeds;
 using Microsoft.Extensions.FileProviders;
 using System.IO;
+using System.Linq;
 
 
 namespace TES_Learning_App.API
@@ -52,7 +53,15 @@ namespace TES_Learning_App.API
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(connectionString));
 
-            builder.Services.AddControllers();
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    // Configure JSON to accept both camelCase and PascalCase
+                    // This ensures compatibility with frontend sending PascalCase
+                    options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+                    // Keep default camelCase for serialization (outgoing)
+                    options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+                });
 
             builder.Services.AddOpenApi();
             builder.Services.AddEndpointsApiExplorer();
@@ -91,18 +100,42 @@ namespace TES_Learning_App.API
 
             var app = builder.Build();
 
+            // Apply database migrations automatically on startup
             using (var scope = app.Services.CreateScope())
             {
                 var services = scope.ServiceProvider;
+                var logger = services.GetRequiredService<ILogger<Program>>();
                 try
                 {
                     var context = services.GetRequiredService<ApplicationDbContext>();
+                    
+                    // Check for pending migrations
+                    var pendingMigrations = context.Database.GetPendingMigrations().ToList();
+                    if (pendingMigrations.Any())
+                    {
+                        logger.LogInformation("Applying {Count} pending database migration(s)...", pendingMigrations.Count);
+                        foreach (var migration in pendingMigrations)
+                        {
+                            logger.LogInformation("  - {Migration}", migration);
+                        }
+                        
+                        // Apply all pending migrations
+                        context.Database.Migrate();
+                        logger.LogInformation("✅ Database migrations applied successfully!");
+                    }
+                    else
+                    {
+                        logger.LogInformation("✅ Database is up to date - no pending migrations.");
+                    }
+                    
+                    // Initialize database (seed data)
                     DbInitializer.Initialize(context);
                 }
                 catch (Exception ex)
                 {
-                    var logger = services.GetRequiredService<ILogger<Program>>();
-                    logger.LogError(ex, "An error occurred while seeding the database.");
+                    logger.LogError(ex, "❌ An error occurred while applying database migrations or seeding the database.");
+                    // Don't throw - allow app to start even if migration fails
+                    // This prevents the app from crashing if there's a temporary DB connection issue
                 }
             }
 
