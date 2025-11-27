@@ -5,7 +5,6 @@ using System.Text;
 using System.Threading.Tasks;
 using TES_Learning_App.Application_Layer.DTOs.Activity.Requests;
 using TES_Learning_App.Application_Layer.DTOs.Activity.Response;
-using TES_Learning_App.Application_Layer.Exceptions;
 using TES_Learning_App.Application_Layer.Interfaces.IRepositories;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Domain.Entities;
@@ -23,24 +22,7 @@ namespace TES_Learning_App.Application_Layer.Services
 
         public async Task<ActivityDto> CreateAsync(CreateActivityDto dto)
         {
-            // Validate foreign key relationships exist
-            var stage = await _unitOfWork.StageRepository.GetByIdAsync(dto.StageId);
-            if (stage == null)
-            {
-                throw new ValidationException("StageId", new[] { "Stage with the specified ID does not exist" });
-            }
-
-            var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(dto.MainActivityId);
-            if (mainActivity == null)
-            {
-                throw new ValidationException("MainActivityId", new[] { "MainActivity with the specified ID does not exist" });
-            }
-
-            var activityType = await _unitOfWork.ActivityTypeRepository.GetByIdAsync(dto.ActivityTypeId);
-            if (activityType == null)
-            {
-                throw new ValidationException("ActivityTypeId", new[] { "ActivityType with the specified ID does not exist" });
-            }
+            // We could add validation here to ensure the StageId, etc., are valid.
 
             var activity = new Activity
             {
@@ -62,16 +44,8 @@ namespace TES_Learning_App.Application_Layer.Services
 
         public async Task DeleteAsync(int id)
         {
-            if (id <= 0)
-            {
-                throw new ArgumentException("Activity ID must be greater than 0", nameof(id));
-            }
-
             var activity = await _unitOfWork.ActivityRepository.GetByIdAsync(id);
-            if (activity == null)
-            {
-                throw new KeyNotFoundException("Activity not found.");
-            }
+            if (activity == null) throw new Exception("Activity not found.");
 
             try
             {
@@ -83,7 +57,7 @@ namespace TES_Learning_App.Application_Layer.Services
                 // Handle database constraint violations and other errors
                 if (ex.Message.Contains("foreign key") || ex.Message.Contains("constraint") || ex.Message.Contains("reference"))
                 {
-                    throw new ValidationException($"Cannot delete activity. It may be referenced by other records. Details: {ex.InnerException?.Message ?? ex.Message}");
+                    throw new Exception($"Cannot delete activity. It may be referenced by other records. Details: {ex.InnerException?.Message ?? ex.Message}");
                 }
                 throw new Exception($"Error deleting activity: {ex.Message}");
             }
@@ -109,16 +83,8 @@ namespace TES_Learning_App.Application_Layer.Services
 
         public async Task UpdateAsync(int id, UpdateActivityDto dto)
         {
-            if (id <= 0)
-            {
-                throw new ArgumentException("Activity ID must be greater than 0", nameof(id));
-            }
-
             var activity = await _unitOfWork.ActivityRepository.GetByIdAsync(id);
-            if (activity == null)
-            {
-                throw new KeyNotFoundException("Activity not found.");
-            }
+            if (activity == null) throw new Exception("Activity not found.");
 
             // For an update, we typically only allow changing the content, not the relationships.
             if (dto.Details_JSON != null)
@@ -134,13 +100,7 @@ namespace TES_Learning_App.Application_Layer.Services
                 activity.Name_si = dto.Name_si;
             
             if (dto.SequenceOrder.HasValue)
-            {
-                if (dto.SequenceOrder.Value <= 0)
-                {
-                    throw new ValidationException("SequenceOrder", new[] { "SequenceOrder must be greater than 0" });
-                }
                 activity.SequenceOrder = dto.SequenceOrder.Value;
-            }
 
             await _unitOfWork.ActivityRepository.UpdateAsync(activity);
             await _unitOfWork.CompleteAsync();

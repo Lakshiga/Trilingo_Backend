@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using TES_Learning_App.Application_Layer.DTOs.Auth;
+using TES_Learning_App.Application_Layer    .DTOs.Auth;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Application_Layer.DTOs.Auth.Requests;
 using TES_Learning_App.Application_Layer.DTOs.Auth.Response;
@@ -16,31 +16,14 @@ namespace TES_Learning_App.API.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterDto dto)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
-            }
-
-            try
-            {
-                var result = await _authService.RegisterAsync(dto);
-                if (!result.IsSuccess) return BadRequest(result);
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { isSuccess = false, message = $"An error occurred during registration: {ex.Message}" });
-            }
+            var result = await _authService.RegisterAsync(dto);
+            if (!result.IsSuccess) return BadRequest(result);
+            return Ok(result);
         }
 
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginDto dto)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
-            }
-
             try
             {
                 var result = await _authService.LoginAsync(dto);
@@ -134,11 +117,6 @@ namespace TES_Learning_App.API.Controllers
         [Authorize]
         public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
-            }
-
             try
             {
                 var username = User.Identity?.Name;

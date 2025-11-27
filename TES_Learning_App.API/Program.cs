@@ -1,16 +1,12 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders;
-using System.IO;
-using System.Linq;
 using TES_Learning_App.API.Extensions;
-using TES_Learning_App.API.Middleware;
 using TES_Learning_App.Application_Layer;
-using TES_Learning_App.Application_Layer.Common;
-using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Infrastructure;
 using TES_Learning_App.Infrastructure.Data;
 using TES_Learning_App.Infrastructure.Data.DbIntializers_Seeds;
-using TES_Learning_App.Infrastructure.Services_external;
+using Microsoft.Extensions.FileProviders;
+using System.IO;
+using System.Linq;
 
 
 namespace TES_Learning_App.API
@@ -24,10 +20,6 @@ namespace TES_Learning_App.API
             builder.WebHost.UseUrls("http://0.0.0.0:5166");
 
             builder.Services.AddInfrastructureServices(builder.Configuration);
-
-            builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
-
-            builder.Services.AddTransient<IEmailService, EmailService>();
 
             builder.Services.AddApplicationServices();
 
@@ -129,11 +121,11 @@ namespace TES_Learning_App.API
                         
                         // Apply all pending migrations
                         context.Database.Migrate();
-                        logger.LogInformation("Database migrations applied successfully!");
+                        logger.LogInformation("✅ Database migrations applied successfully!");
                     }
                     else
                     {
-                        logger.LogInformation("Database is up to date - no pending migrations.");
+                        logger.LogInformation("✅ Database is up to date - no pending migrations.");
                     }
                     
                     // Initialize database (seed data)
@@ -141,7 +133,7 @@ namespace TES_Learning_App.API
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "An error occurred while applying database migrations or seeding the database.");
+                    logger.LogError(ex, "❌ An error occurred while applying database migrations or seeding the database.");
                     // Don't throw - allow app to start even if migration fails
                     // This prevents the app from crashing if there's a temporary DB connection issue
                 }
@@ -164,9 +156,6 @@ namespace TES_Learning_App.API
             {
                 app.UseCors("AllowAll");
             }
-
-            // Global exception handling middleware (must be early in pipeline)
-            app.UseMiddleware<ExceptionHandlingMiddleware>();
 
             app.UseAuthentication();
             app.UseAuthorization();
