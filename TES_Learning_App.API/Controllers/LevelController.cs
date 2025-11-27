@@ -41,26 +41,73 @@ namespace TES_Learning_App.API.Controllers
         [HttpPost]
         public async Task<ActionResult<LevelDto>> Create(CreateLevelDto dto)
         {
-            var newLevel = await _levelService.CreateAsync(dto);
-            // Returns a 201 Created status with a link to the new resource
-            return CreatedAtAction(nameof(GetById), new { id = newLevel.Id }, newLevel);
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
+            }
+
+            try
+            {
+                var newLevel = await _levelService.CreateAsync(dto);
+                return CreatedAtAction(nameof(GetById), new { id = newLevel.Id }, newLevel);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { isSuccess = false, message = $"Error creating level: {ex.Message}" });
+            }
         }
 
         // PUT: api/levels/5
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, UpdateLevelDto dto)
         {
-            // We can add a check here later to ensure the id in the route matches the id in the DTO if needed
-            await _levelService.UpdateAsync(id, dto);
-            return NoContent(); // The standard, correct response for a successful update
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
+            }
+
+            if (id <= 0)
+            {
+                return BadRequest(new { isSuccess = false, message = "Invalid level ID" });
+            }
+
+            try
+            {
+                await _levelService.UpdateAsync(id, dto);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { isSuccess = false, message = "Level not found" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { isSuccess = false, message = $"Error updating level: {ex.Message}" });
+            }
         }
 
         // DELETE: api/levels/5
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            await _levelService.DeleteAsync(id);
-            return NoContent(); // The standard, correct response for a successful delete
+            if (id <= 0)
+            {
+                return BadRequest(new { isSuccess = false, message = "Invalid level ID" });
+            }
+
+            try
+            {
+                await _levelService.DeleteAsync(id);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { isSuccess = false, message = "Level not found" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
         }
     }
 }

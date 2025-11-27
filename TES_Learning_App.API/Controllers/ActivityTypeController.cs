@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TES_Learning_App.Application_Layer.DTOs.ActivityType.Requests;
 using TES_Learning_App.Application_Layer.DTOs.ActivityType.Response;
@@ -41,28 +42,70 @@ namespace TES_Learning_App.API.Controllers
         [HttpPost]
         public async Task<ActionResult<ActivityTypeDto>> Create(CreateActivityTypeDto dto)
         {
-            var newActivityType = await _activityTypeService.CreateAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = newActivityType.Id }, newActivityType);
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
+            }
+
+            try
+            {
+                var newActivityType = await _activityTypeService.CreateAsync(dto);
+                return CreatedAtAction(nameof(GetById), new { id = newActivityType.Id }, newActivityType);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { isSuccess = false, message = $"Error creating activity type: {ex.Message}" });
+            }
         }
 
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, UpdateActivityTypeDto dto)
         {
-            await _activityTypeService.UpdateAsync(id, dto);
-            return NoContent();
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
+            }
+
+            if (id <= 0)
+            {
+                return BadRequest(new { isSuccess = false, message = "Invalid activity type ID" });
+            }
+
+            try
+            {
+                await _activityTypeService.UpdateAsync(id, dto);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { isSuccess = false, message = "Activity type not found" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { isSuccess = false, message = $"Error updating activity type: {ex.Message}" });
+            }
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
+            if (id <= 0)
+            {
+                return BadRequest(new { isSuccess = false, message = "Invalid activity type ID" });
+            }
+
             try
             {
                 await _activityTypeService.DeleteAsync(id);
                 return NoContent();
             }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { isSuccess = false, message = "Activity type not found" });
+            }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return BadRequest(new { isSuccess = false, message = ex.Message });
             }
         }
     }

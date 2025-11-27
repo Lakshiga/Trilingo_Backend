@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using TES_Learning_App.Application_Layer.DTOs.Level.Requests;
 using TES_Learning_App.Application_Layer.DTOs.Level.Response;
+using TES_Learning_App.Application_Layer.Exceptions;
 using TES_Learning_App.Application_Layer.Interfaces.IRepositories;
 using TES_Learning_App.Domain.Entities;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
@@ -22,9 +23,12 @@ namespace TES_Learning_App.Application_Layer.Services
 
         public async Task<LevelDto> CreateAsync(CreateLevelDto dto)
         {
-            // Manual Validation
-            if (string.IsNullOrWhiteSpace(dto.Name_en))
-                throw new Exception("English name is required."); // We can improve this later
+            // Validate LanguageId exists
+            var language = await _unitOfWork.LanguageRepository.GetByIdAsync(dto.LanguageId);
+            if (language == null)
+            {
+                throw new ValidationException("LanguageId", new[] { "Language with the specified ID does not exist" });
+            }
 
             // Map the DTO to our Domain Entity
             var level = new Level
@@ -45,12 +49,18 @@ namespace TES_Learning_App.Application_Layer.Services
 
         public async Task DeleteAsync(int id)
         {
+            if (id <= 0)
+            {
+                throw new ArgumentException("Level ID must be greater than 0", nameof(id));
+            }
+
             var level = await _unitOfWork.LevelRepository.GetByIdAsync(id);
             if (level == null)
-                throw new Exception("Level not found.");
+            {
+                throw new KeyNotFoundException("Level not found.");
+            }
 
             await _unitOfWork.LevelRepository.DeleteAsync(level);
-
             await _unitOfWork.CompleteAsync();
         }
 
@@ -69,14 +79,24 @@ namespace TES_Learning_App.Application_Layer.Services
 
         public async Task UpdateAsync(int id, UpdateLevelDto dto)
         {
+            if (id <= 0)
+            {
+                throw new ArgumentException("Level ID must be greater than 0", nameof(id));
+            }
+
             var level = await _unitOfWork.LevelRepository.GetByIdAsync(id);
             if (level == null)
-                throw new Exception("Level not found.");
+            {
+                throw new KeyNotFoundException("Level not found.");
+            }
 
-            // Update the properties from the DTO
-            level.Name_en = dto.Name_en;
-            level.Name_ta = dto.Name_ta;
-            level.Name_si = dto.Name_si;
+            // Update the properties from the DTO (only if provided)
+            if (dto.Name_en != null)
+                level.Name_en = dto.Name_en;
+            if (dto.Name_ta != null)
+                level.Name_ta = dto.Name_ta;
+            if (dto.Name_si != null)
+                level.Name_si = dto.Name_si;
 
             await _unitOfWork.LevelRepository.UpdateAsync(level);
             await _unitOfWork.CompleteAsync();
