@@ -50,12 +50,24 @@ namespace TES_Learning_App.API.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<ActivityDto>> Create(CreateActivityDto dto)
         {
-            var newActivity = await _activityService.CreateAsync(dto);
-            
-            // Broadcast to all connected admin users
-            await _broadcastService.BroadcastActivityCreatedAsync(newActivity);
-            
-            return CreatedAtAction(nameof(GetById), new { id = newActivity.Id }, newActivity);
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
+            }
+
+            try
+            {
+                var newActivity = await _activityService.CreateAsync(dto);
+                
+                // Broadcast to all connected admin users
+                await _broadcastService.BroadcastActivityCreatedAsync(newActivity);
+                
+                return CreatedAtAction(nameof(GetById), new { id = newActivity.Id }, newActivity);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { isSuccess = false, message = $"Error creating activity: {ex.Message}" });
+            }
         }
 
         // PUT: api/activities/5 - Only Admin can update
@@ -63,16 +75,37 @@ namespace TES_Learning_App.API.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(int id, UpdateActivityDto dto)
         {
-            await _activityService.UpdateAsync(id, dto);
-            
-            // Get updated activity and broadcast
-            var updatedActivity = await _activityService.GetByIdAsync(id);
-            if (updatedActivity != null)
+            if (!ModelState.IsValid)
             {
-                await _broadcastService.BroadcastActivityUpdatedAsync(updatedActivity);
+                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
             }
-            
-            return NoContent();
+
+            if (id <= 0)
+            {
+                return BadRequest(new { isSuccess = false, message = "Invalid activity ID" });
+            }
+
+            try
+            {
+                await _activityService.UpdateAsync(id, dto);
+                
+                // Get updated activity and broadcast
+                var updatedActivity = await _activityService.GetByIdAsync(id);
+                if (updatedActivity != null)
+                {
+                    await _broadcastService.BroadcastActivityUpdatedAsync(updatedActivity);
+                }
+                
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { isSuccess = false, message = "Activity not found" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { isSuccess = false, message = $"Error updating activity: {ex.Message}" });
+            }
         }
 
         // DELETE: api/activities/5 - Only Admin can delete
@@ -80,6 +113,11 @@ namespace TES_Learning_App.API.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(int id)
         {
+            if (id <= 0)
+            {
+                return BadRequest(new { isSuccess = false, message = "Invalid activity ID" });
+            }
+
             try
             {
                 await _activityService.DeleteAsync(id);
@@ -89,9 +127,13 @@ namespace TES_Learning_App.API.Controllers
                 
                 return NoContent();
             }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { isSuccess = false, message = "Activity not found" });
+            }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return BadRequest(new { isSuccess = false, message = ex.Message });
             }
         }
     }
