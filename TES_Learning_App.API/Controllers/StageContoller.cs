@@ -7,7 +7,7 @@ using TES_Learning_App.Application_Layer.Interfaces.IServices;
 
 namespace TES_Learning_App.API.Controllers
 {
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Parent")]
     public class StagesController : BaseApiController
     {
         private readonly IStageService _stageService;
