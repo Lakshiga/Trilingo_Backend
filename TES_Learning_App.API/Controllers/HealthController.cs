@@ -1,78 +1,51 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using TES_Learning_App.Infrastructure.Data;
+using TES_Learning_App.Application_Layer.Interfaces.IServices;
 
 namespace TES_Learning_App.API.Controllers
 {
-    [Route("api/[controller]")]
     [ApiController]
+    [Route("api/[controller]")]
     public class HealthController : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
+        private readonly ILevelService _levelService;
+        private readonly IStageService _stageService;
 
-        public HealthController(ApplicationDbContext context)
+        public HealthController(ILevelService levelService, IStageService stageService)
         {
-            _context = context;
+            _levelService = levelService;
+            _stageService = stageService;
         }
 
-        /// <summary>
-        /// Basic health check endpoint - no database check
-        /// </summary>
         [HttpGet]
-        public IActionResult Get()
-        {
-            return Ok(new
-            {
-                status = "healthy",
-                timestamp = DateTime.UtcNow,
-                server = Environment.MachineName,
-                environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Unknown"
-            });
-        }
-
-        /// <summary>
-        /// Health check with database connectivity test
-        /// </summary>
-        [HttpGet("db")]
-        public async Task<IActionResult> CheckDatabase()
+        [AllowAnonymous]
+        public async Task<ActionResult> HealthCheck()
         {
             try
             {
-                // Test database connection
-                var canConnect = await _context.Database.CanConnectAsync();
+                // Test levels service
+                var levels = await _levelService.GetAllAsync();
                 
-                if (canConnect)
+                // Test stages service
+                var stages = await _stageService.GetAllAsync();
+                
+                return Ok(new
                 {
-                    return Ok(new
-                    {
-                        status = "healthy",
-                        database = "connected",
-                        timestamp = DateTime.UtcNow,
-                        server = Environment.MachineName,
-                        environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Unknown"
-                    });
-                }
-                else
-                {
-                    return StatusCode(503, new
-                    {
-                        status = "unhealthy",
-                        database = "disconnected",
-                        timestamp = DateTime.UtcNow
-                    });
-                }
+                    Status = "Healthy",
+                    LevelsCount = levels.Count(),
+                    StagesCount = stages.Count(),
+                    Timestamp = DateTime.UtcNow
+                });
             }
             catch (Exception ex)
             {
-                return StatusCode(503, new
+                return StatusCode(500, new
                 {
-                    status = "unhealthy",
-                    database = "error",
-                    error = ex.Message,
-                    timestamp = DateTime.UtcNow
+                    Status = "Unhealthy",
+                    Error = ex.Message,
+                    Timestamp = DateTime.UtcNow
                 });
             }
         }
     }
 }
-

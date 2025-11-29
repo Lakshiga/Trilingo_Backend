@@ -12,6 +12,7 @@ namespace TES_Learning_App.Application_Layer.Interfaces.IServices
     {
         Task<IEnumerable<StageDto>> GetAllAsync();
         Task<StageDto?> GetByIdAsync(int id);
+        Task<IEnumerable<StageDto>> GetByLevelIdAsync(int levelId); // Add this method
         Task<StageDto> CreateAsync(CreateStageDto dto);
         Task UpdateAsync(int id, UpdateStageDto dto);
         Task DeleteAsync(int id);

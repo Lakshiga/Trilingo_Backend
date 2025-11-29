@@ -19,6 +19,7 @@ namespace TES_Learning_App.API.Controllers
 
         // GET: api/levels
         [HttpGet]
+        [AllowAnonymous] // Allow unauthenticated access for mobile app
         public async Task<ActionResult<IEnumerable<LevelDto>>> GetAll()
         {
             var levels = await _levelService.GetAllAsync();
@@ -27,6 +28,7 @@ namespace TES_Learning_App.API.Controllers
 
         // GET: api/levels/5
         [HttpGet("{id}")]
+        [AllowAnonymous] // Allow unauthenticated access for mobile app
         public async Task<ActionResult<LevelDto>> GetById(int id)
         {
             var level = await _levelService.GetByIdAsync(id);
