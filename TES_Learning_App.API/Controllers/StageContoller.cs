@@ -14,11 +14,9 @@ namespace TES_Learning_App.API.Controllers
         public StagesController(IStageService stageService) { _stageService = stageService; }
         
         [HttpGet]
-        [AllowAnonymous] // Allow unauthenticated access for mobile app
         public async Task<ActionResult<IEnumerable<StageDto>>> GetAll() => Ok(await _stageService.GetAllAsync());
         
         [HttpGet("{id}")]
-        [AllowAnonymous] // Allow unauthenticated access for mobile app
         public async Task<ActionResult<StageDto>> GetById(int id)
         {
             var stage = await _stageService.GetByIdAsync(id);
@@ -28,7 +26,6 @@ namespace TES_Learning_App.API.Controllers
         
         // GET: api/stages/level/5 - Get all stages for a specific level
         [HttpGet("level/{levelId}")]
-        [AllowAnonymous] // Allow unauthenticated access for mobile app
         public async Task<ActionResult<IEnumerable<StageDto>>> GetByLevelId(int levelId)
         {
             var stages = await _stageService.GetByLevelIdAsync(levelId);
@@ -36,6 +33,7 @@ namespace TES_Learning_App.API.Controllers
         }
         
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<StageDto>> Create(CreateStageDto dto)
         {
             var newStage = await _stageService.CreateAsync(dto);
@@ -43,6 +41,7 @@ namespace TES_Learning_App.API.Controllers
         }
         
         [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(int id, UpdateStageDto dto)
         {
             await _stageService.UpdateAsync(id, dto);
@@ -50,6 +49,7 @@ namespace TES_Learning_App.API.Controllers
         }
         
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(int id)
         {
             await _stageService.DeleteAsync(id);
