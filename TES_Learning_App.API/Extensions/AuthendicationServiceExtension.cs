@@ -56,6 +56,35 @@ namespace TES_Learning_App.API.Extensions
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
                 };
+                
+                // Handle [AllowAnonymous] properly by not challenging anonymous endpoints
+                options.Events = new JwtBearerEvents
+                {
+                    OnChallenge = context =>
+                    {
+                        // Check if the endpoint allows anonymous access
+                        var endpoint = context.HttpContext.GetEndpoint();
+                        if (endpoint?.Metadata?.GetMetadata<Microsoft.AspNetCore.Authorization.IAllowAnonymous>() != null)
+                        {
+                            // Don't challenge anonymous endpoints
+                            context.HandleResponse();
+                            return Task.CompletedTask;
+                        }
+                        return Task.CompletedTask;
+                    },
+                    OnAuthenticationFailed = context =>
+                    {
+                        // Check if the endpoint allows anonymous access
+                        var endpoint = context.HttpContext.GetEndpoint();
+                        if (endpoint?.Metadata?.GetMetadata<Microsoft.AspNetCore.Authorization.IAllowAnonymous>() != null)
+                        {
+                            // Don't fail authentication for anonymous endpoints
+                            context.NoResult();
+                            return Task.CompletedTask;
+                        }
+                        return Task.CompletedTask;
+                    }
+                };
             });
 
             return services;

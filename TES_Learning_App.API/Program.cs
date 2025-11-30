@@ -80,7 +80,8 @@ namespace TES_Learning_App.API
                         origin?.StartsWith("exp://") == true || 
                         origin?.StartsWith("http://localhost") == true ||
                         origin?.StartsWith("http://192.168.") == true || 
-                        origin?.StartsWith("http://10.0.2.2") == true
+                        origin?.StartsWith("http://10.0.2.2") == true ||
+                        origin == null // Allow null origin for mobile apps making direct requests
                     )
                           .AllowAnyHeader()
                           .AllowAnyMethod()
