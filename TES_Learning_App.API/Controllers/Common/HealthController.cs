@@ -1,12 +1,18 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TES_Learning_App.API.Controllers.Common;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
 
-namespace TES_Learning_App.API.Controllers
+namespace TES_Learning_App.API.Controllers.Common
 {
+    /// <summary>
+    /// Health check controller
+    /// Route: api/health
+    /// </summary>
+    [Route("api/health")]
     [ApiController]
-    [Route("api/[controller]")]
-    public class HealthController : ControllerBase
+    [AllowAnonymous]
+    public class HealthController : BaseApiController
     {
         private readonly ILevelService _levelService;
         private readonly IStageService _stageService;
@@ -17,18 +23,21 @@ namespace TES_Learning_App.API.Controllers
             _stageService = stageService;
         }
 
+        /// <summary>
+        /// Health check endpoint
+        /// GET: api/health
+        /// </summary>
         [HttpGet]
-        [AllowAnonymous]
         public async Task<ActionResult> HealthCheck()
         {
             try
             {
                 // Test levels service
                 var levels = await _levelService.GetAllAsync();
-                
+
                 // Test stages service
                 var stages = await _stageService.GetAllAsync();
-                
+
                 return Ok(new
                 {
                     Status = "Healthy",
@@ -49,3 +58,4 @@ namespace TES_Learning_App.API.Controllers
         }
     }
 }
+
