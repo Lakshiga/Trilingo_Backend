@@ -6,7 +6,7 @@ using TES_Learning_App.Application_Layer.Interfaces.IServices;
 
 namespace TES_Learning_App.API.Controllers
 {
-    [Authorize(Roles = "SuperAdmin")] // Use a more restrictive role for safety
+    [Authorize(Roles = "Admin")] // Admin role required for role management
     public class RolesController : BaseApiController
     {
         private readonly IRoleService _roleService;

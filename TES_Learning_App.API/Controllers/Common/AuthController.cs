@@ -75,7 +75,7 @@ namespace TES_Learning_App.API.Controllers.Common
         }
 
         /// <summary>
-        /// Admin panel login - Only allows Admin or SuperAdmin users
+        /// Admin panel login - Only allows Admin users
         /// POST: api/auth/admin-login
         /// </summary>
         [HttpPost("admin-login")]
@@ -187,12 +187,17 @@ namespace TES_Learning_App.API.Controllers.Common
         {
             if (file == null || file.Length == 0)
             {
-                return BadRequest(new { message = "No file uploaded" });
+                return BadRequest(new { isSuccess = false, message = "No file uploaded" });
             }
 
             try
             {
                 var username = GetCurrentUsername();
+                if (string.IsNullOrEmpty(username))
+                {
+                    return Unauthorized(new { isSuccess = false, message = "User not found" });
+                }
+
                 var result = await _authService.UploadProfileImageAsync(username, file);
                 if (!result.IsSuccess)
                 {
@@ -202,7 +207,7 @@ namespace TES_Learning_App.API.Controllers.Common
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error uploading profile image", error = ex.Message });
+                return StatusCode(500, new { isSuccess = false, message = "Error uploading profile image", error = ex.Message });
             }
         }
 
@@ -228,6 +233,40 @@ namespace TES_Learning_App.API.Controllers.Common
         {
             var result = await _authService.CreateAdminUserAsync();
             return Ok(result);
+        }
+
+        /// <summary>
+        /// Change password
+        /// PUT: api/auth/change-password
+        /// </summary>
+        [HttpPut("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            try
+            {
+                var username = GetCurrentUsername();
+                if (string.IsNullOrEmpty(username))
+                {
+                    return Unauthorized(new { message = "User not found" });
+                }
+
+                var result = await _authService.ChangePasswordAsync(username, dto);
+                if (!result.IsSuccess)
+                {
+                    return BadRequest(result);
+                }
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error changing password", error = ex.Message });
+            }
         }
 
         /// <summary>
