@@ -181,11 +181,14 @@ jobs:
           fi
 
       - name: Test SSH Connection
+        continue-on-error: true
         run: |
           echo "🔍 Testing SSH connection to EC2..."
-          MAX_RETRIES=3
-          RETRY_DELAY=15
-          CONNECT_TIMEOUT=20
+          MAX_RETRIES=2
+          RETRY_DELAY=10
+          CONNECT_TIMEOUT=15
+          
+          CONNECTION_SUCCESS=false
           
           for i in $(seq 1 $MAX_RETRIES); do
             echo ""
@@ -193,15 +196,7 @@ jobs:
             echo "Attempt $i of $MAX_RETRIES..."
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
-            # Test SSH connection with verbose output for first attempt
-            if [ $i -eq 1 ]; then
-              SSH_OPTS="-v"
-            else
-              SSH_OPTS=""
-            fi
-            
-            if ssh $SSH_OPTS \
-                   -i ~/.ssh/id_rsa \
+            if ssh -i ~/.ssh/id_rsa \
                    -o StrictHostKeyChecking=no \
                    -o ConnectTimeout=$CONNECT_TIMEOUT \
                    -o ServerAliveInterval=10 \
@@ -213,7 +208,8 @@ jobs:
                    "echo 'Connection successful'" 2>&1; then
               echo ""
               echo "✅ SSH connection successful!"
-              exit 0
+              CONNECTION_SUCCESS=true
+              break
             else
               SSH_EXIT_CODE=$?
               echo ""
@@ -222,51 +218,53 @@ jobs:
               if [ $i -lt $MAX_RETRIES ]; then
                 echo "⏳ Retrying in $RETRY_DELAY seconds..."
                 sleep $RETRY_DELAY
-                RETRY_DELAY=$((RETRY_DELAY + 5))
-              else
-                echo ""
-                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "❌ SSH connection failed after $MAX_RETRIES attempts"
-                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo ""
-                echo "🔧 Troubleshooting Steps:"
-                echo ""
-                echo "1. ✅ Verify EC2 Instance Status:"
-                echo "   - Go to AWS Console → EC2 → Instances"
-                echo "   - Check if instance is 'running' (not stopped/terminated)"
-                echo ""
-                echo "2. ✅ Check Security Group Rules:"
-                echo "   - Go to EC2 → Security Groups → Select your instance's security group"
-                echo "   - Inbound rules should allow:"
-                echo "     Type: SSH, Protocol: TCP, Port: 22"
-                echo "     Source: 0.0.0.0/0 (for testing) OR GitHub Actions IP ranges"
-                echo ""
-                echo "3. ✅ Verify EC2_HOST Secret:"
-                echo "   - Go to GitHub → Settings → Secrets and variables → Actions"
-                echo "   - Check EC2_HOST value (should be IP or public DNS)"
-                echo "   - Example: ec2-1-2-3-4.compute-1.amazonaws.com or 1.2.3.4"
-                echo ""
-                echo "4. ✅ Check EC2 Public IP/DNS:"
-                echo "   - In AWS Console, verify the 'Public IPv4 address' or 'Public IPv4 DNS'"
-                echo "   - Ensure it matches your EC2_HOST secret"
-                echo ""
-                echo "5. ✅ Verify Network Settings:"
-                echo "   - Instance should be in a public subnet"
-                echo "   - Internet Gateway should be attached to VPC"
-                echo "   - Route table should route 0.0.0.0/0 to Internet Gateway"
-                echo ""
-                echo "6. ✅ Test SSH Manually:"
-                echo "   - Try connecting from your local machine:"
-                echo "     ssh -i your-key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
-                echo ""
-                exit 1
               fi
             fi
           done
+          
+          if [ "$CONNECTION_SUCCESS" = false ]; then
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "⚠️  WARNING: SSH connection test failed"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "🔴 CRITICAL: You MUST fix the Security Group before deployment will work!"
+            echo ""
+            echo "📋 EXACT STEPS TO FIX:"
+            echo ""
+            echo "1. Go to AWS Console → EC2 → Instances"
+            echo "2. Select your EC2 instance"
+            echo "3. Click on the 'Security' tab"
+            echo "4. Click on the Security Group link (e.g., 'sg-xxxxx')"
+            echo "5. Click 'Edit inbound rules'"
+            echo "6. Click 'Add rule'"
+            echo "7. Configure the rule:"
+            echo "   - Type: SSH"
+            echo "   - Protocol: TCP"
+            echo "   - Port range: 22"
+            echo "   - Source: 0.0.0.0/0 (for testing) or specific IP"
+            echo "   - Description: Allow SSH from GitHub Actions"
+            echo "8. Click 'Save rules'"
+            echo ""
+            echo "⚠️  Note: The deployment will continue but will likely fail at the next step"
+            echo "   if the security group is not configured correctly."
+            echo ""
+            echo "🔍 Additional Checks:"
+            echo "   - Verify EC2 instance is 'running'"
+            echo "   - Verify EC2_HOST secret matches instance Public IP/DNS"
+            echo "   - Test SSH manually: ssh -i key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
+            echo ""
+          fi
 
       - name: Copy files to EC2
         run: |
           echo "📦 Copying deployment files to EC2..."
+          echo ""
+          echo "⚠️  If this step fails with 'Connection timed out', check:"
+          echo "   1. EC2 Security Group allows SSH (port 22) from 0.0.0.0/0"
+          echo "   2. EC2 instance is running"
+          echo "   3. EC2_HOST secret is correct"
+          echo ""
           MAX_RETRIES=3
           RETRY_DELAY=5
           
