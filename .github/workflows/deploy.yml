@@ -80,69 +80,36 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
-          # Write SSH key with proper formatting (remove Windows line endings)
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
+          # Write SSH key - use a method that preserves the key exactly
+          # Store secret in a variable first to avoid any shell interpretation
+          KEY_CONTENT="${{ secrets.EC2_SSH_PRIVATE_KEY }}"
+          echo "$KEY_CONTENT" > ~/.ssh/id_rsa
+          
+          # Fix Windows line endings and remove trailing whitespace
+          sed -i 's/\r$//' ~/.ssh/id_rsa
+          # Remove trailing blank lines
+          sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' ~/.ssh/id_rsa
+          
           chmod 600 ~/.ssh/id_rsa
           
-          # Basic check - verify key file was created
-          if [ ! -f ~/.ssh/id_rsa ]; then
-            echo "❌ Error: Failed to create SSH key file"
+          # Verify key file exists and has content
+          if [ ! -f ~/.ssh/id_rsa ] || [ ! -s ~/.ssh/id_rsa ]; then
+            echo "❌ Error: SSH key file is empty or missing"
+            echo ""
+            echo "📋 Your EC2_SSH_PRIVATE_KEY secret might be empty."
+            echo "   Please check GitHub Secrets and add the key content."
             exit 1
           fi
           
-          echo "✅ SSH key file created"
+          # Show first and last line to verify format (without exposing key)
+          echo "🔍 Key file info:"
+          echo "   First line: $(head -n 1 ~/.ssh/id_rsa)"
+          echo "   Last line: $(tail -n 1 ~/.ssh/id_rsa)"
+          echo "   Total lines: $(wc -l < ~/.ssh/id_rsa)"
           
           # Add host to known_hosts
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
           echo "✅ SSH configuration completed"
-
-      - name: Test SSH Connection
-        run: |
-          echo "🔍 Testing SSH connection..."
-          if ssh -i ~/.ssh/id_rsa \
-                 -o StrictHostKeyChecking=no \
-                 -o ConnectTimeout=10 \
-                 -o BatchMode=yes \
-                 ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-                 "echo 'SSH connection successful'" 2>&1; then
-            echo "✅ SSH connection test passed!"
-          else
-            SSH_ERROR=$?
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "❌ SSH Connection Failed"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
-            echo "📋 HOW TO FIX YOUR SSH KEY IN GITHUB SECRETS:"
-            echo ""
-            echo "1. Open your key file:"
-            echo "   C:\\Users\\ASUS\\Downloads\\backend-key.pem"
-            echo ""
-            echo "2. Open it in Notepad or VS Code"
-            echo ""
-            echo "3. Select ALL (Ctrl+A) and Copy (Ctrl+C)"
-            echo "   Make sure you copy EVERYTHING including:"
-            echo "   - -----BEGIN RSA PRIVATE KEY-----"
-            echo "   - All the key content"
-            echo "   - -----END RSA PRIVATE KEY-----"
-            echo ""
-            echo "4. Go to GitHub Secrets:"
-            echo "   https://github.com/Lakshiga/Trilingo_Backend/settings/secrets/actions"
-            echo ""
-            echo "5. Click the pencil icon ✏️ next to EC2_SSH_PRIVATE_KEY"
-            echo ""
-            echo "6. DELETE all old content"
-            echo ""
-            echo "7. PASTE the entire key (Ctrl+V)"
-            echo ""
-            echo "8. Make sure NO extra spaces before or after"
-            echo ""
-            echo "9. Click 'Update secret'"
-            echo ""
-            echo "10. Re-run this workflow"
-            echo ""
-            exit 1
-          fi
 
       - name: Copy files to EC2
         run: |
@@ -161,19 +128,53 @@ jobs:
               echo "Copying $file (attempt $attempt of $MAX_RETRIES)..."
               echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
               
-              if scp -i ~/.ssh/id_rsa \
+              SCP_OUTPUT=$(scp -i ~/.ssh/id_rsa \
                      -o StrictHostKeyChecking=no \
                      -o ConnectTimeout=30 \
                      -o ServerAliveInterval=10 \
                      -o ServerAliveCountMax=3 \
                      -o UserKnownHostsFile=~/.ssh/known_hosts \
-                     "$file" "$dest" 2>&1; then
+                     "$file" "$dest" 2>&1)
+              SCP_EXIT=$?
+              
+              if [ $SCP_EXIT -eq 0 ]; then
                 echo ""
                 echo "✅ Successfully copied $file"
                 return 0
               else
                 echo ""
                 echo "❌ Copy attempt $attempt failed"
+                echo "Error output: $SCP_OUTPUT"
+                
+                # Check for specific SSH key errors
+                if echo "$SCP_OUTPUT" | grep -q "error in libcrypto\|Load key.*error\|Permission denied.*publickey"; then
+                  echo ""
+                  echo "🔴 SSH KEY FORMAT ERROR DETECTED!"
+                  echo ""
+                  echo "📋 EXACT STEPS TO FIX:"
+                  echo ""
+                  echo "1. Open: C:\\Users\\ASUS\\Downloads\\backend-key.pem"
+                  echo ""
+                  echo "2. In Notepad, press Ctrl+A (select all)"
+                  echo ""
+                  echo "3. Press Ctrl+C (copy)"
+                  echo ""
+                  echo "4. Go to: https://github.com/Lakshiga/Trilingo_Backend/settings/secrets/actions"
+                  echo ""
+                  echo "5. Click ✏️ (pencil) next to EC2_SSH_PRIVATE_KEY"
+                  echo ""
+                  echo "6. DELETE everything in the text box"
+                  echo ""
+                  echo "7. Press Ctrl+V (paste the key)"
+                  echo ""
+                  echo "8. Verify it starts with: -----BEGIN"
+                  echo "9. Verify it ends with: -----END"
+                  echo ""
+                  echo "10. Click 'Update secret'"
+                  echo ""
+                  echo "11. Re-run this workflow"
+                  echo ""
+                fi
                 
                 if [ $attempt -lt $MAX_RETRIES ]; then
                   echo "⏳ Retrying in $RETRY_DELAY seconds..."
@@ -208,12 +209,12 @@ jobs:
         run: |
           echo "🚀 Starting deployment to EC2..."
           ssh -i ~/.ssh/id_rsa \
-              -o StrictHostKeyChecking=no \
-              -o ConnectTimeout=30 \
-              -o ServerAliveInterval=10 \
-              -o ServerAliveCountMax=3 \
-              -o UserKnownHostsFile=~/.ssh/known_hosts \
-              -o BatchMode=yes \
+                     -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=30 \
+                     -o ServerAliveInterval=10 \
+                     -o ServerAliveCountMax=3 \
+                     -o UserKnownHostsFile=~/.ssh/known_hosts \
+                     -o BatchMode=yes \
               ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
               "set -e && \
                APP_DIR=\"/var/www/trilingo-backend\" && \
