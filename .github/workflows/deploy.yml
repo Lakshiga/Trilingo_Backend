@@ -90,6 +90,97 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
 
+      - name: Test SSH Connection
+        run: |
+          echo "🔍 Testing SSH connection to EC2..."
+          MAX_RETRIES=3
+          RETRY_DELAY=10
+          CONNECTION_SUCCESS=false
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Connection test attempt $i of $MAX_RETRIES..."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            if ssh -i ~/.ssh/id_rsa \
+                   -o StrictHostKeyChecking=no \
+                   -o ConnectTimeout=30 \
+                   -o ServerAliveInterval=10 \
+                   -o ServerAliveCountMax=3 \
+                   -o UserKnownHostsFile=~/.ssh/known_hosts \
+                   -o BatchMode=yes \
+                   ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+                   "echo 'SSH connection successful'" 2>&1; then
+              echo ""
+              echo "✅ SSH connection test successful!"
+              CONNECTION_SUCCESS=true
+              break
+            else
+              SSH_EXIT_CODE=$?
+              echo ""
+              echo "❌ SSH connection test failed (exit code: $SSH_EXIT_CODE)"
+              
+              if [ $i -lt $MAX_RETRIES ]; then
+                echo "⏳ Retrying in $RETRY_DELAY seconds..."
+                sleep $RETRY_DELAY
+              fi
+            fi
+          done
+          
+          if [ "$CONNECTION_SUCCESS" = false ]; then
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "❌ CRITICAL: Cannot establish SSH connection"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "🔴 The deployment cannot continue without SSH access!"
+            echo ""
+            echo "📋 TROUBLESHOOTING STEPS - AWS EC2 Configuration:"
+            echo ""
+            echo "1. ✅ Verify EC2 Instance Status:"
+            echo "   - Go to: https://console.aws.amazon.com/ec2/"
+            echo "   - Navigate to: EC2 → Instances"
+            echo "   - Find your instance and verify status is 'running'"
+            echo "   - If stopped, click 'Start instance'"
+            echo ""
+            echo "2. ✅ Verify Security Group Rules:"
+            echo "   - Select your EC2 instance"
+            echo "   - Click 'Security' tab (bottom panel)"
+            echo "   - Click on Security Group ID (e.g., 'sg-xxxxx')"
+            echo "   - Click 'Edit inbound rules'"
+            echo "   - Ensure you have this rule:"
+            echo "     ┌─────────────────────────────────────────┐"
+            echo "     │ Type:        SSH                       │"
+            echo "     │ Protocol:    TCP                       │"
+            echo "     │ Port range:  22                         │"
+            echo "     │ Source:      0.0.0.0/0                  │"
+            echo "     │ Description: Allow SSH from GitHub      │"
+            echo "     └─────────────────────────────────────────┘"
+            echo "   - If rule doesn't exist, click 'Add rule' and create it"
+            echo "   - Click 'Save rules'"
+            echo ""
+            echo "3. ✅ Verify EC2_HOST Secret:"
+            echo "   - Go to: GitHub → Settings → Secrets and variables → Actions"
+            echo "   - Check EC2_HOST secret value"
+            echo "   - It should match your EC2 instance's:"
+            echo "     • Public IPv4 address (e.g., 54.123.45.67)"
+            echo "     • OR Public IPv4 DNS (e.g., ec2-54-123-45-67.compute-1.amazonaws.com)"
+            echo "   - Get the correct value from: EC2 Console → Instances → Your instance → Details tab"
+            echo ""
+            echo "4. ✅ Test SSH Manually (from your local machine):"
+            echo "   ssh -i your-key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
+            echo "   If this works, GitHub Actions should also work"
+            echo ""
+            echo "5. ✅ Check EC2 Instance Public IP:"
+            echo "   - EC2 instances get new Public IPs when stopped/started"
+            echo "   - If you restarted the instance, update EC2_HOST secret with new IP"
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            exit 1
+          fi
+
       - name: Copy files to EC2
         run: |
           echo "📦 Copying deployment files to EC2..."
@@ -137,14 +228,34 @@ jobs:
           # Copy deployment package
           if ! copy_with_retry "deployment-package.zip" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
             echo ""
-            echo "❌ Deployment aborted: Cannot copy deployment package"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "❌ CRITICAL: Failed to copy deployment package"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "The SSH connection test passed, but file copy is failing."
+            echo "This might indicate:"
+            echo "  - Network instability"
+            echo "  - File size too large"
+            echo "  - EC2 instance under heavy load"
+            echo ""
+            echo "💡 Try:"
+            echo "  - Re-run this workflow (may work on retry)"
+            echo "  - Check EC2 instance status in AWS Console"
+            echo "  - Verify instance has enough disk space"
+            echo ""
             exit 1
           fi
           
           # Copy service file
           if ! copy_with_retry "trilingo-backend.service" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
             echo ""
-            echo "❌ Deployment aborted: Cannot copy service file"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "❌ CRITICAL: Failed to copy service file"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "The deployment package was copied, but service file copy failed."
+            echo "This is unusual - please check EC2 instance status."
+            echo ""
             exit 1
           fi
           
