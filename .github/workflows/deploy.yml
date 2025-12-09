@@ -43,10 +43,6 @@ jobs:
         run: dotnet publish TES_Learning_App.API/TES_Learning_App.API.csproj --configuration Release --output ./TES_Learning_App.API/publish --no-build
         working-directory: ${{ steps.backend-dir.outputs.BACKEND_DIR }}
 
-      # ---------------------------------------------------------
-      # FIX APPLIED: Changed Type=notify to Type=simple
-      # This prevents the "Core Dump" / Timeout error.
-      # ---------------------------------------------------------
       - name: Create Systemd Service File
         run: |
           cat <<EOF > trilingo-backend.service
@@ -84,444 +80,81 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          
-          # Validate secrets are set
-          if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then
-            echo "❌ Error: EC2_SSH_PRIVATE_KEY secret is not set"
-            exit 1
-          fi
-          
-          if [ -z "${{ secrets.EC2_HOST }}" ]; then
-            echo "❌ Error: EC2_HOST secret is not set"
-            exit 1
-          fi
-          
-          if [ -z "${{ secrets.EC2_USER }}" ]; then
-            echo "❌ Error: EC2_USER secret is not set"
-            exit 1
-          fi
-          
-          # Write SSH private key
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          
-          # Verify SSH key format
-          if [ ! -s ~/.ssh/id_rsa ]; then
-            echo "❌ Error: SSH private key file is empty"
-            exit 1
-          fi
-          
-          # Check if key starts with proper header
-          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
-            echo "❌ Error: SSH private key format is invalid (missing BEGIN header)"
-            exit 1
-          fi
-          
-          # Add host to known_hosts (non-fatal, but log if it fails)
-          echo "🔍 Scanning host keys for ${{ secrets.EC2_HOST }}..."
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || {
-            echo "⚠️  Warning: Could not scan host keys (this is usually OK if host is not reachable yet)"
-            echo "   Will use StrictHostKeyChecking=no in SSH commands"
-          }
-          
-          echo "✅ SSH configuration completed"
-
-      - name: Verify EC2 Configuration
-        run: |
-          echo "🔍 Verifying EC2 configuration..."
-          
-          # Check if secrets are set
-          if [ -z "${{ secrets.EC2_HOST }}" ]; then
-            echo "❌ Error: EC2_HOST secret is not set"
-            exit 1
-          fi
-          
-          if [ -z "${{ secrets.EC2_USER }}" ]; then
-            echo "❌ Error: EC2_USER secret is not set"
-            exit 1
-          fi
-          
-          # Display configuration (masked)
-          echo "✅ EC2_HOST is set: ${EC2_HOST:0:3}***"
-          echo "✅ EC2_USER is set: ${{ secrets.EC2_USER }}"
-          
-          # Verify host format
-          EC2_HOST="${{ secrets.EC2_HOST }}"
-          if [[ ! "$EC2_HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && [[ ! "$EC2_HOST" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
-            echo "⚠️  Warning: EC2_HOST format might be invalid: $EC2_HOST"
-            echo "   Expected: IP address (e.g., 1.2.3.4) or domain name (e.g., ec2-1-2-3-4.compute-1.amazonaws.com)"
-          fi
-          
-          echo "✅ Configuration verified"
-
-      - name: Test Network Connectivity
-        run: |
-          echo "🌐 Testing network connectivity to EC2..."
-          EC2_HOST="${{ secrets.EC2_HOST }}"
-          
-          # Test if host is reachable (ping with timeout)
-          echo "Testing ping to $EC2_HOST..."
-          if timeout 5 ping -c 3 "$EC2_HOST" 2>&1 || timeout 5 ping -c 3 "$EC2_HOST" 2>&1; then
-            echo "✅ Host is reachable via ping"
-          else
-            echo "⚠️  Warning: Host might not be reachable via ping (this is normal for some EC2 instances)"
-            echo "   Continuing with SSH test..."
-          fi
-          
-          # Test port 22 connectivity
-          echo "Testing port 22 connectivity..."
-          if timeout 5 bash -c "echo > /dev/tcp/$EC2_HOST/22" 2>/dev/null; then
-            echo "✅ Port 22 is open"
-          else
-            echo "⚠️  Warning: Cannot connect to port 22"
-            echo "   This might indicate:"
-            echo "   - Security group doesn't allow SSH from GitHub Actions"
-            echo "   - EC2 instance is not running"
-            echo "   - Network connectivity issues"
-          fi
-
-      - name: Test SSH Connection
-        continue-on-error: true
-        run: |
-          echo "🔍 Testing SSH connection to EC2..."
-          MAX_RETRIES=2
-          RETRY_DELAY=10
-          CONNECT_TIMEOUT=15
-          
-          CONNECTION_SUCCESS=false
-          
-          for i in $(seq 1 $MAX_RETRIES); do
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "Attempt $i of $MAX_RETRIES..."
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            
-            if ssh -i ~/.ssh/id_rsa \
-                   -o StrictHostKeyChecking=no \
-                   -o ConnectTimeout=$CONNECT_TIMEOUT \
-                   -o ServerAliveInterval=10 \
-                   -o ServerAliveCountMax=3 \
-                   -o UserKnownHostsFile=~/.ssh/known_hosts \
-                   -o BatchMode=yes \
-                   -o LogLevel=ERROR \
-                   ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-                   "echo 'Connection successful'" 2>&1; then
-              echo ""
-              echo "✅ SSH connection successful!"
-              CONNECTION_SUCCESS=true
-              break
-            else
-              SSH_EXIT_CODE=$?
-              echo ""
-              echo "❌ SSH connection failed (exit code: $SSH_EXIT_CODE)"
-              
-              if [ $i -lt $MAX_RETRIES ]; then
-                echo "⏳ Retrying in $RETRY_DELAY seconds..."
-                sleep $RETRY_DELAY
-              fi
-            fi
-          done
-          
-          if [ "$CONNECTION_SUCCESS" = false ]; then
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "⚠️  WARNING: SSH connection test failed"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo ""
-            echo "🔴 CRITICAL: You MUST fix the Security Group before deployment will work!"
-            echo ""
-            echo "📋 EXACT STEPS TO FIX:"
-            echo ""
-            echo "1. Go to AWS Console → EC2 → Instances"
-            echo "2. Select your EC2 instance"
-            echo "3. Click on the 'Security' tab"
-            echo "4. Click on the Security Group link (e.g., 'sg-xxxxx')"
-            echo "5. Click 'Edit inbound rules'"
-            echo "6. Click 'Add rule'"
-            echo "7. Configure the rule:"
-            echo "   - Type: SSH"
-            echo "   - Protocol: TCP"
-            echo "   - Port range: 22"
-            echo "   - Source: 0.0.0.0/0 (for testing) or specific IP"
-            echo "   - Description: Allow SSH from GitHub Actions"
-            echo "8. Click 'Save rules'"
-            echo ""
-            echo "⚠️  Note: The deployment will continue but will likely fail at the next step"
-            echo "   if the security group is not configured correctly."
-            echo ""
-            echo "🔍 Additional Checks:"
-            echo "   - Verify EC2 instance is 'running'"
-            echo "   - Verify EC2_HOST secret matches instance Public IP/DNS"
-            echo "   - Test SSH manually: ssh -i key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
-            echo ""
-          fi
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
 
       - name: Copy files to EC2
         run: |
           echo "📦 Copying deployment files to EC2..."
-          echo ""
-          MAX_RETRIES=3
-          RETRY_DELAY=5
-          
-          # Function to copy file with retry
-          copy_with_retry() {
-            local file=$1
-            local dest=$2
-            local attempt=1
-            local last_error=""
-            
-            while [ $attempt -le $MAX_RETRIES ]; do
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              echo "Copying $file (attempt $attempt of $MAX_RETRIES)..."
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              
-              if scp -i ~/.ssh/id_rsa \
-                     -o StrictHostKeyChecking=no \
-                     -o ConnectTimeout=20 \
-                     -o ServerAliveInterval=10 \
-                     -o ServerAliveCountMax=3 \
-                     -o UserKnownHostsFile=~/.ssh/known_hosts \
-                     "$file" "$dest" 2>&1 | tee /tmp/scp_output.log; then
-                echo ""
-                echo "✅ Successfully copied $file"
-                return 0
-              else
-                last_error=$(cat /tmp/scp_output.log 2>/dev/null || echo "Connection failed")
-                echo ""
-                echo "❌ Copy attempt $attempt failed"
-                
-                if [ $attempt -lt $MAX_RETRIES ]; then
-                  echo "⏳ Retrying in $RETRY_DELAY seconds..."
-                  sleep $RETRY_DELAY
-                  attempt=$((attempt + 1))
-                else
-                  echo ""
-                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                  echo "❌ CRITICAL ERROR: Failed to copy $file"
-                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                  echo ""
-                  echo "🔴 The deployment cannot continue without fixing this issue!"
-                  echo ""
-                  echo "📋 EXACT FIX REQUIRED - EC2 Security Group Configuration:"
-                  echo ""
-                  echo "The connection is timing out because your EC2 Security Group"
-                  echo "does not allow SSH (port 22) connections from GitHub Actions."
-                  echo ""
-                  echo "🔧 STEP-BY-STEP FIX:"
-                  echo ""
-                  echo "1. Open AWS Console: https://console.aws.amazon.com/ec2/"
-                  echo ""
-                  echo "2. Navigate to: EC2 → Instances → Select your instance"
-                  echo ""
-                  echo "3. Click the 'Security' tab (bottom panel)"
-                  echo ""
-                  echo "4. Click on the Security Group ID link (e.g., 'sg-0123456789abcdef0')"
-                  echo ""
-                  echo "5. Click 'Edit inbound rules' button"
-                  echo ""
-                  echo "6. Click 'Add rule' button"
-                  echo ""
-                  echo "7. Configure the new rule:"
-                  echo "   ┌─────────────────────────────────────────┐"
-                  echo "   │ Type:        SSH                       │"
-                  echo "   │ Protocol:    TCP                       │"
-                  echo "   │ Port range:  22                         │"
-                  echo "   │ Source:      0.0.0.0/0                  │"
-                  echo "   │ Description: Allow SSH from GitHub     │"
-                  echo "   └─────────────────────────────────────────┘"
-                  echo ""
-                  echo "8. Click 'Save rules'"
-                  echo ""
-                  echo "9. Wait 10-30 seconds for the change to propagate"
-                  echo ""
-                  echo "10. Re-run this GitHub Actions workflow"
-                  echo ""
-                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                  echo ""
-                  echo "🔍 VERIFICATION:"
-                  echo ""
-                  echo "After adding the rule, test from your local machine:"
-                  echo "  ssh -i your-key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
-                  echo ""
-                  echo "If this works, GitHub Actions will also work."
-                  echo ""
-                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                  echo ""
-                  echo "⚠️  Additional Checks:"
-                  echo "   - EC2 instance status: Must be 'running'"
-                  echo "   - EC2_HOST secret: Must match instance Public IP/DNS"
-                  echo "   - Network ACLs: Should allow traffic (default is OK)"
-                  echo ""
-                  return 1
-                fi
-              fi
-            done
-          }
-          
-          # Copy deployment package
-          if ! copy_with_retry "deployment-package.zip" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
-            echo ""
-            echo "❌ Deployment aborted: Cannot copy files to EC2"
-            echo "   Please fix the Security Group and re-run the workflow."
-            exit 1
-          fi
-          
-          # Copy service file
-          if ! copy_with_retry "trilingo-backend.service" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
-            echo ""
-            echo "❌ Deployment aborted: Cannot copy files to EC2"
-            echo "   Please fix the Security Group and re-run the workflow."
-            exit 1
-          fi
-          
-          echo ""
-          echo "✅ All files copied successfully!"
+          scp -i ~/.ssh/id_rsa \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=20 \
+              deployment-package.zip ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+          scp -i ~/.ssh/id_rsa \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=20 \
+              trilingo-backend.service ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+          echo "✅ Files copied successfully!"
 
       - name: Deploy to EC2
         run: |
           echo "🚀 Starting deployment to EC2..."
-          echo ""
-          
-          MAX_RETRIES=3
-          RETRY_DELAY=5
-          DEPLOY_SUCCESS=false
-          
-          # Function to execute deployment with retry
-          deploy_with_retry() {
-            local attempt=1
-            
-            while [ $attempt -le $MAX_RETRIES ]; do
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              echo "Deployment attempt $attempt of $MAX_RETRIES..."
-              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-              
-              echo "🚀 Executing deployment commands directly via SSH..."
-              
-              # Execute deployment commands directly via SSH in a single command
-              # This avoids file copying which is timing out
-              ssh -i ~/.ssh/id_rsa \
-                     -o StrictHostKeyChecking=no \
-                     -o ConnectTimeout=20 \
-                     -o ServerAliveInterval=10 \
-                     -o ServerAliveCountMax=3 \
-                     -o UserKnownHostsFile=~/.ssh/known_hosts \
-                     -o BatchMode=yes \
-                     ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-                     "set -e && \
-                      APP_DIR=\"/var/www/trilingo-backend\" && \
-                      BACKUP_DIR=\"/var/www/trilingo-backend-backup\" && \
-                      SERVICE_NAME=\"trilingo-backend\" && \
-                      EC2_USER=\"${{ secrets.EC2_USER }}\" && \
-                      echo \"🚀 Starting deployment...\" && \
-                      sudo mkdir -p \$APP_DIR && \
-                      sudo mkdir -p \$BACKUP_DIR && \
-                      (sudo systemctl is-active --quiet \$SERVICE_NAME && (echo \"⏸️  Stopping service...\" && sudo systemctl stop \$SERVICE_NAME || true) || true) && \
-                      ([ -d \"\$APP_DIR\" ] && [ \"\$(ls -A \$APP_DIR)\" ] && (echo \"💾 Creating backup...\" && sudo cp -r \$APP_DIR/* \$BACKUP_DIR/\$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true) || true) && \
-                      echo \"📦 Extracting package...\" && \
-                      TEMP_DIR=\$(mktemp -d) && \
-                      sudo unzip -q /tmp/deployment-package.zip -d \$TEMP_DIR && \
-                      ([ -d \"\$APP_DIR/wwwroot\" ] && (echo \"  - Preserving wwwroot...\" && sudo mkdir -p \$TEMP_DIR/wwwroot && sudo cp -r \$APP_DIR/wwwroot/* \$TEMP_DIR/wwwroot/ 2>/dev/null || true) || true) && \
-                      echo \"🧹 Updating files...\" && \
-                      sudo rm -rf \$APP_DIR/* && \
-                      sudo cp -r \$TEMP_DIR/* \$APP_DIR/ && \
-                      echo \"📝 Updating Systemd Service...\" && \
-                      sudo mv /tmp/trilingo-backend.service /etc/systemd/system/\$SERVICE_NAME.service && \
-                      echo \"🔐 Setting permissions...\" && \
-                      sudo chown -R \$EC2_USER:\$EC2_USER \$APP_DIR && \
-                      sudo chmod +x \$APP_DIR/TES_Learning_App.API.dll || true && \
-                      echo \"🔄 Restarting service...\" && \
-                      sudo systemctl daemon-reload && \
-                      sudo systemctl enable \$SERVICE_NAME && \
-                      sudo systemctl start \$SERVICE_NAME && \
-                      sudo rm -rf \$TEMP_DIR && \
-                      sudo rm -f /tmp/deployment-package.zip && \
-                      echo \"⏳ Waiting for service to initialize...\" && \
-                      sleep 5 && \
-                      (sudo systemctl is-active --quiet \$SERVICE_NAME && (echo \"✅ Service started successfully!\" && sudo systemctl status \$SERVICE_NAME --no-pager -l) || (echo \"❌ Service failed to start. Showing logs:\" && sudo journalctl -u \$SERVICE_NAME --no-pager -n 50 && exit 1))" 2>&1
-              
-              SSH_EXIT_CODE=$?
-              if [ $SSH_EXIT_CODE -eq 0 ]; then
-                echo ""
-                echo "✅ Deployment completed successfully!"
-                return 0
-              else
-                echo ""
-                echo "❌ Deployment attempt $attempt failed (exit code: $SSH_EXIT_CODE)"
-                
-                # Provide specific diagnostics based on exit code
-                if [ $SSH_EXIT_CODE -eq 255 ]; then
-                  echo "🔍 SSH connection failed (exit code 255)"
-                  echo "   This usually means the SSH connection could not be established."
-                elif [ $SSH_EXIT_CODE -eq 1 ]; then
-                  echo "🔍 Deployment script failed (exit code 1)"
-                  echo "   The script executed but encountered an error. Check logs above."
-                else
-                  echo "🔍 Unknown error (exit code: $SSH_EXIT_CODE)"
-                fi
-                
-                if [ $attempt -lt $MAX_RETRIES ]; then
-                  echo "⏳ Retrying in $RETRY_DELAY seconds..."
-                  sleep $RETRY_DELAY
-                  attempt=$((attempt + 1))
-                else
-                  echo ""
-                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                  echo "❌ Deployment failed after $MAX_RETRIES attempts"
-                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                  echo ""
-                  if [ $SSH_EXIT_CODE -eq 255 ]; then
-                    echo "🔍 SSH Connection Issue:"
-                    echo ""
-                    echo "The SSH connection could not be established."
-                    echo "Files were copied successfully in the previous step,"
-                    echo "but the connection timed out during deployment."
-                    echo ""
-                    echo "📋 TROUBLESHOOTING STEPS:"
-                    echo ""
-                    echo "1. Verify EC2 instance is running:"
-                    echo "   - Go to AWS Console → EC2 → Instances"
-                    echo "   - Check instance status is 'running'"
-                    echo ""
-                    echo "2. Verify Security Group allows SSH:"
-                    echo "   - Select your EC2 instance"
-                    echo "   - Click 'Security' tab"
-                    echo "   - Check Security Group inbound rules"
-                    echo "   - Ensure SSH (port 22) is allowed from 0.0.0.0/0"
-                    echo ""
-                    echo "3. Verify EC2_HOST secret is correct:"
-                    echo "   - Should match instance Public IP or Public DNS"
-                    echo ""
-                    echo "4. Test SSH manually from your local machine:"
-                    echo "   ssh -i your-key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
-                  else
-                    echo "🔍 Deployment Script Issue:"
-                    echo ""
-                    echo "The deployment script executed but failed."
-                    echo "Check the logs above for specific error messages."
-                    echo ""
-                    echo "Common issues:"
-                    echo "  - Missing dependencies"
-                    echo "  - Permission errors"
-                    echo "  - Service configuration issues"
-                    echo "  - Application startup failures"
-                  fi
-                  echo ""
-                  return 1
-                fi
-              fi
-            done
-          }
-          
-          # Execute deployment with retry
-          if deploy_with_retry; then
-            echo ""
-            echo "✅ Deployment process completed!"
-          else
-            echo ""
-            echo "❌ Deployment failed after all retry attempts"
-            exit 1
-          fi
-      
+          ssh -i ~/.ssh/id_rsa \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=20 \
+              -o ServerAliveInterval=10 \
+              -o ServerAliveCountMax=3 \
+              ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+              "set -e && \
+               APP_DIR=\"/var/www/trilingo-backend\" && \
+               BACKUP_DIR=\"/var/www/trilingo-backend-backup\" && \
+               SERVICE_NAME=\"trilingo-backend\" && \
+               EC2_USER=\"${{ secrets.EC2_USER }}\" && \
+               echo \"🚀 Starting deployment...\" && \
+               sudo mkdir -p \$APP_DIR && \
+               sudo mkdir -p \$BACKUP_DIR && \
+               if sudo systemctl is-active --quiet \$SERVICE_NAME; then \
+                 echo \"⏸️  Stopping service...\" && \
+                 sudo systemctl stop \$SERVICE_NAME || true; \
+               fi && \
+               if [ -d \"\$APP_DIR\" ] && [ \"\$(ls -A \$APP_DIR)\" ]; then \
+                 echo \"💾 Creating backup...\" && \
+                 sudo cp -r \$APP_DIR/* \$BACKUP_DIR/\$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true; \
+               fi && \
+               echo \"📦 Extracting package...\" && \
+               TEMP_DIR=\$(mktemp -d) && \
+               sudo unzip -q /tmp/deployment-package.zip -d \$TEMP_DIR && \
+               if [ -d \"\$APP_DIR/wwwroot\" ]; then \
+                 echo \"  - Preserving wwwroot...\" && \
+                 sudo mkdir -p \$TEMP_DIR/wwwroot && \
+                 sudo cp -r \$APP_DIR/wwwroot/* \$TEMP_DIR/wwwroot/ 2>/dev/null || true; \
+               fi && \
+               echo \"🧹 Updating files...\" && \
+               sudo rm -rf \$APP_DIR/* && \
+               sudo cp -r \$TEMP_DIR/* \$APP_DIR/ && \
+               echo \"📝 Updating Systemd Service...\" && \
+               sudo mv /tmp/trilingo-backend.service /etc/systemd/system/\$SERVICE_NAME.service && \
+               echo \"🔐 Setting permissions...\" && \
+               sudo chown -R \$EC2_USER:\$EC2_USER \$APP_DIR && \
+               sudo chmod +x \$APP_DIR/TES_Learning_App.API.dll || true && \
+               echo \"🔄 Restarting service...\" && \
+               sudo systemctl daemon-reload && \
+               sudo systemctl enable \$SERVICE_NAME && \
+               sudo systemctl start \$SERVICE_NAME && \
+               sudo rm -rf \$TEMP_DIR && \
+               sudo rm -f /tmp/deployment-package.zip && \
+               echo \"⏳ Waiting for service to initialize...\" && \
+               sleep 5 && \
+               if sudo systemctl is-active --quiet \$SERVICE_NAME; then \
+                 echo \"✅ Service started successfully!\" && \
+                 sudo systemctl status \$SERVICE_NAME --no-pager -l; \
+               else \
+                 echo \"❌ Service failed to start. Showing logs:\" && \
+                 sudo journalctl -u \$SERVICE_NAME --no-pager -n 50 && \
+                 exit 1; \
+               fi"
+
       - name: Cleanup SSH key
         if: always()
         run: rm -f ~/.ssh/id_rsa
