@@ -84,24 +84,44 @@ jobs:
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # Validate SSH key format
-          echo "🔍 Validating SSH key format..."
-          if ! ssh-keygen -l -f ~/.ssh/id_rsa > /dev/null 2>&1; then
-            echo "❌ Error: SSH key format is invalid or corrupted"
+          # Basic validation - check if key file exists and has content
+          echo "🔍 Validating SSH key..."
+          if [ ! -s ~/.ssh/id_rsa ]; then
+            echo "❌ Error: SSH key file is empty"
             echo ""
             echo "📋 HOW TO FIX:"
-            echo "   1. Open your backend-key.pem file in a text editor"
-            echo "   2. Select ALL content (Ctrl+A)"
-            echo "   3. Copy it (Ctrl+C)"
-            echo "   4. Go to GitHub → Settings → Secrets → Actions"
-            echo "   5. Edit EC2_SSH_PRIVATE_KEY secret"
-            echo "   6. Paste the ENTIRE key content (including BEGIN/END lines)"
-            echo "   7. Make sure there are NO extra spaces before/after"
-            echo "   8. Save the secret"
+            echo "   Your EC2_SSH_PRIVATE_KEY secret is empty or not set correctly."
+            echo "   Please add the key content to GitHub Secrets."
             exit 1
           fi
           
-          echo "✅ SSH key format is valid"
+          # Check if key has BEGIN/END markers
+          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
+            echo "❌ Error: SSH key format is invalid (missing BEGIN marker)"
+            echo ""
+            echo "📋 HOW TO FIX:"
+            echo "   1. Open your backend-key.pem file in a text editor"
+            echo "   2. Select ALL content (Ctrl+A) - make sure to include:"
+            echo "      - -----BEGIN RSA PRIVATE KEY----- (or BEGIN PRIVATE KEY)"
+            echo "      - All the key content in the middle"
+            echo "      - -----END RSA PRIVATE KEY----- (or END PRIVATE KEY)"
+            echo "   3. Copy it (Ctrl+C)"
+            echo "   4. Go to: https://github.com/Lakshiga/Trilingo_Backend/settings/secrets/actions"
+            echo "   5. Click pencil icon next to EC2_SSH_PRIVATE_KEY"
+            echo "   6. Delete old content, paste new content"
+            echo "   7. Make sure NO extra spaces before/after"
+            echo "   8. Click 'Update secret'"
+            exit 1
+          fi
+          
+          if ! grep -q "END.*PRIVATE KEY" ~/.ssh/id_rsa; then
+            echo "❌ Error: SSH key format is invalid (missing END marker)"
+            echo ""
+            echo "📋 Same fix as above - make sure to include the END line"
+            exit 1
+          fi
+          
+          echo "✅ SSH key format looks valid"
           
           # Add host to known_hosts
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
