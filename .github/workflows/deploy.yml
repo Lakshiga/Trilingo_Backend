@@ -126,35 +126,139 @@ jobs:
           
           echo "✅ SSH configuration completed"
 
+      - name: Verify EC2 Configuration
+        run: |
+          echo "🔍 Verifying EC2 configuration..."
+          
+          # Check if secrets are set
+          if [ -z "${{ secrets.EC2_HOST }}" ]; then
+            echo "❌ Error: EC2_HOST secret is not set"
+            exit 1
+          fi
+          
+          if [ -z "${{ secrets.EC2_USER }}" ]; then
+            echo "❌ Error: EC2_USER secret is not set"
+            exit 1
+          fi
+          
+          # Display configuration (masked)
+          echo "✅ EC2_HOST is set: ${EC2_HOST:0:3}***"
+          echo "✅ EC2_USER is set: ${{ secrets.EC2_USER }}"
+          
+          # Verify host format
+          EC2_HOST="${{ secrets.EC2_HOST }}"
+          if [[ ! "$EC2_HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] && [[ ! "$EC2_HOST" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            echo "⚠️  Warning: EC2_HOST format might be invalid: $EC2_HOST"
+            echo "   Expected: IP address (e.g., 1.2.3.4) or domain name (e.g., ec2-1-2-3-4.compute-1.amazonaws.com)"
+          fi
+          
+          echo "✅ Configuration verified"
+
+      - name: Test Network Connectivity
+        run: |
+          echo "🌐 Testing network connectivity to EC2..."
+          EC2_HOST="${{ secrets.EC2_HOST }}"
+          
+          # Test if host is reachable (ping with timeout)
+          echo "Testing ping to $EC2_HOST..."
+          if timeout 5 ping -c 3 "$EC2_HOST" 2>&1 || timeout 5 ping -c 3 "$EC2_HOST" 2>&1; then
+            echo "✅ Host is reachable via ping"
+          else
+            echo "⚠️  Warning: Host might not be reachable via ping (this is normal for some EC2 instances)"
+            echo "   Continuing with SSH test..."
+          fi
+          
+          # Test port 22 connectivity
+          echo "Testing port 22 connectivity..."
+          if timeout 5 bash -c "echo > /dev/tcp/$EC2_HOST/22" 2>/dev/null; then
+            echo "✅ Port 22 is open"
+          else
+            echo "⚠️  Warning: Cannot connect to port 22"
+            echo "   This might indicate:"
+            echo "   - Security group doesn't allow SSH from GitHub Actions"
+            echo "   - EC2 instance is not running"
+            echo "   - Network connectivity issues"
+          fi
+
       - name: Test SSH Connection
         run: |
           echo "🔍 Testing SSH connection to EC2..."
-          MAX_RETRIES=5
-          RETRY_DELAY=10
+          MAX_RETRIES=3
+          RETRY_DELAY=15
+          CONNECT_TIMEOUT=20
           
           for i in $(seq 1 $MAX_RETRIES); do
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "Attempt $i of $MAX_RETRIES..."
-            if ssh -i ~/.ssh/id_rsa \
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # Test SSH connection with verbose output for first attempt
+            if [ $i -eq 1 ]; then
+              SSH_OPTS="-v"
+            else
+              SSH_OPTS=""
+            fi
+            
+            if ssh $SSH_OPTS \
+                   -i ~/.ssh/id_rsa \
                    -o StrictHostKeyChecking=no \
-                   -o ConnectTimeout=10 \
+                   -o ConnectTimeout=$CONNECT_TIMEOUT \
+                   -o ServerAliveInterval=10 \
+                   -o ServerAliveCountMax=3 \
                    -o UserKnownHostsFile=~/.ssh/known_hosts \
                    -o BatchMode=yes \
+                   -o LogLevel=ERROR \
                    ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
                    "echo 'Connection successful'" 2>&1; then
+              echo ""
               echo "✅ SSH connection successful!"
               exit 0
             else
+              SSH_EXIT_CODE=$?
+              echo ""
+              echo "❌ SSH connection failed (exit code: $SSH_EXIT_CODE)"
+              
               if [ $i -lt $MAX_RETRIES ]; then
-                echo "⏳ Connection failed. Retrying in $RETRY_DELAY seconds..."
+                echo "⏳ Retrying in $RETRY_DELAY seconds..."
                 sleep $RETRY_DELAY
-                RETRY_DELAY=$((RETRY_DELAY * 2))
+                RETRY_DELAY=$((RETRY_DELAY + 5))
               else
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "❌ SSH connection failed after $MAX_RETRIES attempts"
-                echo "Please check:"
-                echo "  1. EC2 instance is running"
-                echo "  2. Security group allows SSH (port 22) from GitHub Actions IPs"
-                echo "  3. EC2_HOST secret is correct"
-                echo "  4. Network connectivity to EC2"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                echo "🔧 Troubleshooting Steps:"
+                echo ""
+                echo "1. ✅ Verify EC2 Instance Status:"
+                echo "   - Go to AWS Console → EC2 → Instances"
+                echo "   - Check if instance is 'running' (not stopped/terminated)"
+                echo ""
+                echo "2. ✅ Check Security Group Rules:"
+                echo "   - Go to EC2 → Security Groups → Select your instance's security group"
+                echo "   - Inbound rules should allow:"
+                echo "     Type: SSH, Protocol: TCP, Port: 22"
+                echo "     Source: 0.0.0.0/0 (for testing) OR GitHub Actions IP ranges"
+                echo ""
+                echo "3. ✅ Verify EC2_HOST Secret:"
+                echo "   - Go to GitHub → Settings → Secrets and variables → Actions"
+                echo "   - Check EC2_HOST value (should be IP or public DNS)"
+                echo "   - Example: ec2-1-2-3-4.compute-1.amazonaws.com or 1.2.3.4"
+                echo ""
+                echo "4. ✅ Check EC2 Public IP/DNS:"
+                echo "   - In AWS Console, verify the 'Public IPv4 address' or 'Public IPv4 DNS'"
+                echo "   - Ensure it matches your EC2_HOST secret"
+                echo ""
+                echo "5. ✅ Verify Network Settings:"
+                echo "   - Instance should be in a public subnet"
+                echo "   - Internet Gateway should be attached to VPC"
+                echo "   - Route table should route 0.0.0.0/0 to Internet Gateway"
+                echo ""
+                echo "6. ✅ Test SSH Manually:"
+                echo "   - Try connecting from your local machine:"
+                echo "     ssh -i your-key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
+                echo ""
                 exit 1
               fi
             fi
