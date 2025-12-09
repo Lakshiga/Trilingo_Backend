@@ -126,14 +126,93 @@ jobs:
           
           echo "✅ SSH configuration completed"
 
+      - name: Test SSH Connection
+        run: |
+          echo "🔍 Testing SSH connection to EC2..."
+          MAX_RETRIES=5
+          RETRY_DELAY=10
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Attempt $i of $MAX_RETRIES..."
+            if ssh -i ~/.ssh/id_rsa \
+                   -o StrictHostKeyChecking=no \
+                   -o ConnectTimeout=10 \
+                   -o UserKnownHostsFile=~/.ssh/known_hosts \
+                   -o BatchMode=yes \
+                   ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+                   "echo 'Connection successful'" 2>&1; then
+              echo "✅ SSH connection successful!"
+              exit 0
+            else
+              if [ $i -lt $MAX_RETRIES ]; then
+                echo "⏳ Connection failed. Retrying in $RETRY_DELAY seconds..."
+                sleep $RETRY_DELAY
+                RETRY_DELAY=$((RETRY_DELAY * 2))
+              else
+                echo "❌ SSH connection failed after $MAX_RETRIES attempts"
+                echo "Please check:"
+                echo "  1. EC2 instance is running"
+                echo "  2. Security group allows SSH (port 22) from GitHub Actions IPs"
+                echo "  3. EC2_HOST secret is correct"
+                echo "  4. Network connectivity to EC2"
+                exit 1
+              fi
+            fi
+          done
+
       - name: Copy files to EC2
         run: |
-          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts deployment-package.zip ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
-          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts trilingo-backend.service ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+          echo "📦 Copying deployment files to EC2..."
+          MAX_RETRIES=3
+          RETRY_DELAY=5
+          
+          # Function to copy file with retry
+          copy_with_retry() {
+            local file=$1
+            local dest=$2
+            local attempt=1
+            
+            while [ $attempt -le $MAX_RETRIES ]; do
+              echo "Copying $file (attempt $attempt of $MAX_RETRIES)..."
+              if scp -i ~/.ssh/id_rsa \
+                     -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=30 \
+                     -o ServerAliveInterval=60 \
+                     -o ServerAliveCountMax=3 \
+                     -o UserKnownHostsFile=~/.ssh/known_hosts \
+                     "$file" "$dest" 2>&1; then
+                echo "✅ Successfully copied $file"
+                return 0
+              else
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  echo "⏳ Copy failed. Retrying in $RETRY_DELAY seconds..."
+                  sleep $RETRY_DELAY
+                  attempt=$((attempt + 1))
+                else
+                  echo "❌ Failed to copy $file after $MAX_RETRIES attempts"
+                  return 1
+                fi
+              fi
+            done
+          }
+          
+          # Copy deployment package
+          copy_with_retry "deployment-package.zip" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/" || exit 1
+          
+          # Copy service file
+          copy_with_retry "trilingo-backend.service" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/" || exit 1
+          
+          echo "✅ All files copied successfully!"
 
       - name: Deploy to EC2
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          ssh -i ~/.ssh/id_rsa \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=30 \
+              -o ServerAliveInterval=60 \
+              -o ServerAliveCountMax=3 \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
             set -e
             
             # Configuration
