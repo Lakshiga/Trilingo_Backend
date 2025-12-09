@@ -260,11 +260,6 @@ jobs:
         run: |
           echo "📦 Copying deployment files to EC2..."
           echo ""
-          echo "⚠️  If this step fails with 'Connection timed out', check:"
-          echo "   1. EC2 Security Group allows SSH (port 22) from 0.0.0.0/0"
-          echo "   2. EC2 instance is running"
-          echo "   3. EC2_HOST secret is correct"
-          echo ""
           MAX_RETRIES=3
           RETRY_DELAY=5
           
@@ -273,25 +268,90 @@ jobs:
             local file=$1
             local dest=$2
             local attempt=1
+            local last_error=""
             
             while [ $attempt -le $MAX_RETRIES ]; do
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
               echo "Copying $file (attempt $attempt of $MAX_RETRIES)..."
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              
               if scp -i ~/.ssh/id_rsa \
                      -o StrictHostKeyChecking=no \
-                     -o ConnectTimeout=30 \
-                     -o ServerAliveInterval=60 \
+                     -o ConnectTimeout=20 \
+                     -o ServerAliveInterval=10 \
                      -o ServerAliveCountMax=3 \
                      -o UserKnownHostsFile=~/.ssh/known_hosts \
-                     "$file" "$dest" 2>&1; then
+                     "$file" "$dest" 2>&1 | tee /tmp/scp_output.log; then
+                echo ""
                 echo "✅ Successfully copied $file"
                 return 0
               else
+                last_error=$(cat /tmp/scp_output.log 2>/dev/null || echo "Connection failed")
+                echo ""
+                echo "❌ Copy attempt $attempt failed"
+                
                 if [ $attempt -lt $MAX_RETRIES ]; then
-                  echo "⏳ Copy failed. Retrying in $RETRY_DELAY seconds..."
+                  echo "⏳ Retrying in $RETRY_DELAY seconds..."
                   sleep $RETRY_DELAY
                   attempt=$((attempt + 1))
                 else
-                  echo "❌ Failed to copy $file after $MAX_RETRIES attempts"
+                  echo ""
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "❌ CRITICAL ERROR: Failed to copy $file"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo ""
+                  echo "🔴 The deployment cannot continue without fixing this issue!"
+                  echo ""
+                  echo "📋 EXACT FIX REQUIRED - EC2 Security Group Configuration:"
+                  echo ""
+                  echo "The connection is timing out because your EC2 Security Group"
+                  echo "does not allow SSH (port 22) connections from GitHub Actions."
+                  echo ""
+                  echo "🔧 STEP-BY-STEP FIX:"
+                  echo ""
+                  echo "1. Open AWS Console: https://console.aws.amazon.com/ec2/"
+                  echo ""
+                  echo "2. Navigate to: EC2 → Instances → Select your instance"
+                  echo ""
+                  echo "3. Click the 'Security' tab (bottom panel)"
+                  echo ""
+                  echo "4. Click on the Security Group ID link (e.g., 'sg-0123456789abcdef0')"
+                  echo ""
+                  echo "5. Click 'Edit inbound rules' button"
+                  echo ""
+                  echo "6. Click 'Add rule' button"
+                  echo ""
+                  echo "7. Configure the new rule:"
+                  echo "   ┌─────────────────────────────────────────┐"
+                  echo "   │ Type:        SSH                       │"
+                  echo "   │ Protocol:    TCP                       │"
+                  echo "   │ Port range:  22                         │"
+                  echo "   │ Source:      0.0.0.0/0                  │"
+                  echo "   │ Description: Allow SSH from GitHub     │"
+                  echo "   └─────────────────────────────────────────┘"
+                  echo ""
+                  echo "8. Click 'Save rules'"
+                  echo ""
+                  echo "9. Wait 10-30 seconds for the change to propagate"
+                  echo ""
+                  echo "10. Re-run this GitHub Actions workflow"
+                  echo ""
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo ""
+                  echo "🔍 VERIFICATION:"
+                  echo ""
+                  echo "After adding the rule, test from your local machine:"
+                  echo "  ssh -i your-key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
+                  echo ""
+                  echo "If this works, GitHub Actions will also work."
+                  echo ""
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo ""
+                  echo "⚠️  Additional Checks:"
+                  echo "   - EC2 instance status: Must be 'running'"
+                  echo "   - EC2_HOST secret: Must match instance Public IP/DNS"
+                  echo "   - Network ACLs: Should allow traffic (default is OK)"
+                  echo ""
                   return 1
                 fi
               fi
@@ -299,11 +359,22 @@ jobs:
           }
           
           # Copy deployment package
-          copy_with_retry "deployment-package.zip" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/" || exit 1
+          if ! copy_with_retry "deployment-package.zip" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
+            echo ""
+            echo "❌ Deployment aborted: Cannot copy files to EC2"
+            echo "   Please fix the Security Group and re-run the workflow."
+            exit 1
+          fi
           
           # Copy service file
-          copy_with_retry "trilingo-backend.service" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/" || exit 1
+          if ! copy_with_retry "trilingo-backend.service" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
+            echo ""
+            echo "❌ Deployment aborted: Cannot copy files to EC2"
+            echo "   Please fix the Security Group and re-run the workflow."
+            exit 1
+          fi
           
+          echo ""
           echo "✅ All files copied successfully!"
 
       - name: Deploy to EC2
