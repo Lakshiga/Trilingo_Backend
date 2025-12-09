@@ -396,61 +396,56 @@ jobs:
               echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
               
               # Execute deployment directly via SSH
-              # Create deployment script content (using double quotes to allow secret expansion)
-              DEPLOY_SCRIPT_CONTENT=$(cat <<SCRIPT_END
-set -e
-APP_DIR="/var/www/trilingo-backend"
-BACKUP_DIR="/var/www/trilingo-backend-backup"
-SERVICE_NAME="trilingo-backend"
-EC2_USER="${{ secrets.EC2_USER }}"
-echo "🚀 Starting deployment..."
-sudo mkdir -p \$APP_DIR
-sudo mkdir -p \$BACKUP_DIR
-if sudo systemctl is-active --quiet \$SERVICE_NAME; then
-  echo "⏸️  Stopping service..."
-  sudo systemctl stop \$SERVICE_NAME || true
-fi
-if [ -d "\$APP_DIR" ] && [ "\$(ls -A \$APP_DIR)" ]; then
-  echo "💾 Creating backup..."
-  sudo cp -r \$APP_DIR/* \$BACKUP_DIR/\$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
-fi
-echo "📦 Extracting package..."
-TEMP_DIR=\$(mktemp -d)
-sudo unzip -q /tmp/deployment-package.zip -d \$TEMP_DIR
-if [ -d "\$APP_DIR/wwwroot" ]; then
-  echo "  - Preserving wwwroot..."
-  sudo mkdir -p \$TEMP_DIR/wwwroot
-  sudo cp -r \$APP_DIR/wwwroot/* \$TEMP_DIR/wwwroot/ 2>/dev/null || true
-fi
-echo "🧹 Updating files..."
-sudo rm -rf \$APP_DIR/*
-sudo cp -r \$TEMP_DIR/* \$APP_DIR/
-echo "📝 Updating Systemd Service..."
-sudo mv /tmp/trilingo-backend.service /etc/systemd/system/\$SERVICE_NAME.service
-echo "🔐 Setting permissions..."
-sudo chown -R \$EC2_USER:\$EC2_USER \$APP_DIR
-sudo chmod +x \$APP_DIR/TES_Learning_App.API.dll || true
-echo "🔄 Restarting service..."
-sudo systemctl daemon-reload
-sudo systemctl enable \$SERVICE_NAME
-sudo systemctl start \$SERVICE_NAME
-sudo rm -rf \$TEMP_DIR
-sudo rm -f /tmp/deployment-package.zip
-echo "⏳ Waiting for service to initialize..."
-sleep 5
-if sudo systemctl is-active --quiet \$SERVICE_NAME; then
-  echo "✅ Service started successfully!"
-  sudo systemctl status \$SERVICE_NAME --no-pager -l
-else
-  echo "❌ Service failed to start. Showing logs:"
-  sudo journalctl -u \$SERVICE_NAME --no-pager -n 50
-  exit 1
-fi
-SCRIPT_END
-)
-              
-              # Execute the script via SSH
-              echo "$DEPLOY_SCRIPT_CONTENT" | ssh -i ~/.ssh/id_rsa \
+              # Build and execute deployment script via SSH using printf to avoid YAML << conflict
+              printf '%s\n' \
+                'set -e' \
+                'APP_DIR="/var/www/trilingo-backend"' \
+                'BACKUP_DIR="/var/www/trilingo-backend-backup"' \
+                'SERVICE_NAME="trilingo-backend"' \
+                "EC2_USER=\"${{ secrets.EC2_USER }}\"" \
+                'echo "🚀 Starting deployment..."' \
+                'sudo mkdir -p $APP_DIR' \
+                'sudo mkdir -p $BACKUP_DIR' \
+                'if sudo systemctl is-active --quiet $SERVICE_NAME; then' \
+                '  echo "⏸️  Stopping service..."' \
+                '  sudo systemctl stop $SERVICE_NAME || true' \
+                'fi' \
+                'if [ -d "$APP_DIR" ] && [ "$(ls -A $APP_DIR)" ]; then' \
+                '  echo "💾 Creating backup..."' \
+                '  sudo cp -r $APP_DIR/* $BACKUP_DIR/$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true' \
+                'fi' \
+                'echo "📦 Extracting package..."' \
+                'TEMP_DIR=$(mktemp -d)' \
+                'sudo unzip -q /tmp/deployment-package.zip -d $TEMP_DIR' \
+                'if [ -d "$APP_DIR/wwwroot" ]; then' \
+                '  echo "  - Preserving wwwroot..."' \
+                '  sudo mkdir -p $TEMP_DIR/wwwroot' \
+                '  sudo cp -r $APP_DIR/wwwroot/* $TEMP_DIR/wwwroot/ 2>/dev/null || true' \
+                'fi' \
+                'echo "🧹 Updating files..."' \
+                'sudo rm -rf $APP_DIR/*' \
+                'sudo cp -r $TEMP_DIR/* $APP_DIR/' \
+                'echo "📝 Updating Systemd Service..."' \
+                'sudo mv /tmp/trilingo-backend.service /etc/systemd/system/$SERVICE_NAME.service' \
+                'echo "🔐 Setting permissions..."' \
+                'sudo chown -R $EC2_USER:$EC2_USER $APP_DIR' \
+                'sudo chmod +x $APP_DIR/TES_Learning_App.API.dll || true' \
+                'echo "🔄 Restarting service..."' \
+                'sudo systemctl daemon-reload' \
+                'sudo systemctl enable $SERVICE_NAME' \
+                'sudo systemctl start $SERVICE_NAME' \
+                'sudo rm -rf $TEMP_DIR' \
+                'sudo rm -f /tmp/deployment-package.zip' \
+                'echo "⏳ Waiting for service to initialize..."' \
+                'sleep 5' \
+                'if sudo systemctl is-active --quiet $SERVICE_NAME; then' \
+                '  echo "✅ Service started successfully!"' \
+                '  sudo systemctl status $SERVICE_NAME --no-pager -l' \
+                'else' \
+                '  echo "❌ Service failed to start. Showing logs:"' \
+                '  sudo journalctl -u $SERVICE_NAME --no-pager -n 50' \
+                '  exit 1' \
+                'fi' | ssh -i ~/.ssh/id_rsa \
                      -o StrictHostKeyChecking=no \
                      -o ConnectTimeout=30 \
                      -o ServerAliveInterval=10 \
