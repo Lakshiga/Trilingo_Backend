@@ -311,13 +311,29 @@ namespace TES_Learning_App.Application_Layer.Services
                     imageUrl = await _s3Service.UploadFileAsync(uniqueFileName, stream, contentType);
                 }
 
-                // If user has an existing profile image in S3, delete it
-                if (!string.IsNullOrEmpty(user.ProfileImageUrl) && !user.ProfileImageUrl.StartsWith("/uploads"))
+                // If user has an existing profile image, delete it (works for both local and S3)
+                if (!string.IsNullOrEmpty(user.ProfileImageUrl))
                 {
-                    // Extract the key from the URL
-                    var existingKey = user.ProfileImageUrl.Contains("/profiles/") 
-                        ? user.ProfileImageUrl.Substring(user.ProfileImageUrl.IndexOf("/profiles/") + 1)
-                        : null;
+                    // For local files (/uploads/...), use the full path
+                    // For S3 files (https://...), extract the key
+                    string existingKey;
+                    if (user.ProfileImageUrl.StartsWith("/uploads/"))
+                    {
+                        // Local file - use the full path
+                        existingKey = user.ProfileImageUrl;
+                    }
+                    else if (user.ProfileImageUrl.StartsWith("http://") || user.ProfileImageUrl.StartsWith("https://"))
+                    {
+                        // S3/CloudFront URL - extract the key
+                        existingKey = user.ProfileImageUrl.Contains("/profiles/") 
+                            ? user.ProfileImageUrl.Substring(user.ProfileImageUrl.IndexOf("/profiles/") + 1)
+                            : null;
+                    }
+                    else
+                    {
+                        // Assume it's already a key
+                        existingKey = user.ProfileImageUrl;
+                    }
                     
                     if (!string.IsNullOrEmpty(existingKey))
                     {

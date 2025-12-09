@@ -19,6 +19,10 @@ namespace TES_Learning_App.API
             var builder = WebApplication.CreateBuilder(args);
             builder.WebHost.UseUrls("http://0.0.0.0:5166");
 
+            // Add ContentRootPath and Environment to configuration for S3Service
+            builder.Configuration["ContentRootPath"] = builder.Environment.ContentRootPath;
+            builder.Configuration["ASPNETCORE_ENVIRONMENT"] = builder.Environment.EnvironmentName;
+
             builder.Services.AddInfrastructureServices(builder.Configuration);
 
             builder.Services.AddApplicationServices();
