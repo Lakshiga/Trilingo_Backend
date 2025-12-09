@@ -379,13 +379,154 @@ jobs:
 
       - name: Deploy to EC2
         run: |
-          ssh -i ~/.ssh/id_rsa \
-              -o StrictHostKeyChecking=no \
-              -o ConnectTimeout=30 \
-              -o ServerAliveInterval=60 \
-              -o ServerAliveCountMax=3 \
-              -o UserKnownHostsFile=~/.ssh/known_hosts \
-              ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          echo "🚀 Starting deployment to EC2..."
+          echo ""
+          
+          MAX_RETRIES=3
+          RETRY_DELAY=5
+          DEPLOY_SUCCESS=false
+          
+          # Function to execute deployment with retry
+          deploy_with_retry() {
+            local attempt=1
+            
+            while [ $attempt -le $MAX_RETRIES ]; do
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "Deployment attempt $attempt of $MAX_RETRIES..."
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              
+              if ssh -i ~/.ssh/id_rsa \
+                     -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=20 \
+                     -o ServerAliveInterval=10 \
+                     -o ServerAliveCountMax=3 \
+                     -o UserKnownHostsFile=~/.ssh/known_hosts \
+                     -o BatchMode=yes \
+                     ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+                set -e
+                
+                # Configuration
+                APP_DIR="/var/www/trilingo-backend"
+                BACKUP_DIR="/var/www/trilingo-backend-backup"
+                SERVICE_NAME="trilingo-backend"
+                
+                echo "🚀 Starting deployment..."
+                
+                # 1. Create directories
+                sudo mkdir -p $APP_DIR
+                sudo mkdir -p $BACKUP_DIR
+                
+                # 2. Stop service
+                if sudo systemctl is-active --quiet $SERVICE_NAME; then
+                  echo "⏸️  Stopping service..."
+                  sudo systemctl stop $SERVICE_NAME || true
+                fi
+                
+                # 3. Backup
+                if [ -d "$APP_DIR" ] && [ "$(ls -A $APP_DIR)" ]; then
+                  echo "💾 Creating backup..."
+                  sudo cp -r $APP_DIR/* $BACKUP_DIR/$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
+                fi
+                
+                # 4. Extract New Files
+                echo "📦 Extracting package..."
+                TEMP_DIR=$(mktemp -d)
+                sudo unzip -q /tmp/deployment-package.zip -d $TEMP_DIR
+                
+                # 5. Preserve specific files (wwwroot/uploads)
+                if [ -d "$APP_DIR/wwwroot" ]; then
+                  echo "  - Preserving wwwroot..."
+                  sudo mkdir -p $TEMP_DIR/wwwroot
+                  sudo cp -r $APP_DIR/wwwroot/* $TEMP_DIR/wwwroot/ 2>/dev/null || true
+                fi
+
+                # 6. Move files to App Dir
+                echo "🧹 Updating files..."
+                sudo rm -rf $APP_DIR/*
+                sudo cp -r $TEMP_DIR/* $APP_DIR/
+                
+                # 7. Install/Update Service File
+                echo "📝 Updating Systemd Service..."
+                sudo mv /tmp/trilingo-backend.service /etc/systemd/system/$SERVICE_NAME.service
+                
+                # 8. Permissions
+                echo "🔐 Setting permissions..."
+                sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} $APP_DIR
+                sudo chmod +x $APP_DIR/TES_Learning_App.API.dll || true
+                
+                # 9. Restart Service
+                echo "🔄 Restarting service..."
+                sudo systemctl daemon-reload
+                sudo systemctl enable $SERVICE_NAME
+                sudo systemctl start $SERVICE_NAME
+                
+                # 10. Cleanup
+                sudo rm -rf $TEMP_DIR
+                sudo rm -f /tmp/deployment-package.zip
+                
+                # 11. Check Status
+                echo "⏳ Waiting for service to initialize..."
+                sleep 5
+                
+                if sudo systemctl is-active --quiet $SERVICE_NAME; then
+                  echo "✅ Service started successfully!"
+                  sudo systemctl status $SERVICE_NAME --no-pager -l
+                else
+                  echo "❌ Service failed to start. Showing logs:"
+                  sudo journalctl -u $SERVICE_NAME --no-pager -n 50
+                  exit 1
+                fi
+              ENDSSH
+              then
+                echo ""
+                echo "✅ Deployment completed successfully!"
+                return 0
+              else
+                SSH_EXIT_CODE=$?
+                echo ""
+                echo "❌ Deployment attempt $attempt failed (exit code: $SSH_EXIT_CODE)"
+                
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  echo "⏳ Retrying in $RETRY_DELAY seconds..."
+                  sleep $RETRY_DELAY
+                  attempt=$((attempt + 1))
+                else
+                  echo ""
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "❌ Deployment failed after $MAX_RETRIES attempts"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo ""
+                  echo "🔍 Troubleshooting:"
+                  echo ""
+                  echo "The SSH connection timed out during deployment."
+                  echo "Files were copied successfully, but the deployment script"
+                  echo "could not execute on the EC2 instance."
+                  echo ""
+                  echo "Possible causes:"
+                  echo "  1. Network connectivity issues (intermittent)"
+                  echo "  2. EC2 instance is under heavy load"
+                  echo "  3. Security group rules changed"
+                  echo ""
+                  echo "💡 Try:"
+                  echo "  - Re-run this workflow (may work on retry)"
+                  echo "  - Check EC2 instance status in AWS Console"
+                  echo "  - Verify security group still allows SSH"
+                  echo ""
+                  return 1
+                fi
+              fi
+            done
+          }
+          
+          # Execute deployment with retry
+          if deploy_with_retry; then
+            echo ""
+            echo "✅ Deployment process completed!"
+          else
+            echo ""
+            echo "❌ Deployment failed after all retry attempts"
+            exit 1
+          fi
             set -e
             
             # Configuration
