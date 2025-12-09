@@ -83,18 +83,57 @@ jobs:
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          # Validate secrets are set
+          if [ -z "${{ secrets.EC2_SSH_PRIVATE_KEY }}" ]; then
+            echo "❌ Error: EC2_SSH_PRIVATE_KEY secret is not set"
+            exit 1
+          fi
+          
+          if [ -z "${{ secrets.EC2_HOST }}" ]; then
+            echo "❌ Error: EC2_HOST secret is not set"
+            exit 1
+          fi
+          
+          if [ -z "${{ secrets.EC2_USER }}" ]; then
+            echo "❌ Error: EC2_USER secret is not set"
+            exit 1
+          fi
+          
+          # Write SSH private key
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          
+          # Verify SSH key format
+          if [ ! -s ~/.ssh/id_rsa ]; then
+            echo "❌ Error: SSH private key file is empty"
+            exit 1
+          fi
+          
+          # Check if key starts with proper header
+          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
+            echo "❌ Error: SSH private key format is invalid (missing BEGIN header)"
+            exit 1
+          fi
+          
+          # Add host to known_hosts (non-fatal, but log if it fails)
+          echo "🔍 Scanning host keys for ${{ secrets.EC2_HOST }}..."
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || {
+            echo "⚠️  Warning: Could not scan host keys (this is usually OK if host is not reachable yet)"
+            echo "   Will use StrictHostKeyChecking=no in SSH commands"
+          }
+          
+          echo "✅ SSH configuration completed"
 
       - name: Copy files to EC2
         run: |
-          scp -i ~/.ssh/id_rsa deployment-package.zip ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
-          scp -i ~/.ssh/id_rsa trilingo-backend.service ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts deployment-package.zip ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
+          scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts trilingo-backend.service ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
 
       - name: Deploy to EC2
         run: |
-          ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
             set -e
             
             # Configuration
