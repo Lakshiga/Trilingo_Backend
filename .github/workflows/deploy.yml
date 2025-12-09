@@ -395,17 +395,10 @@ jobs:
               echo "Deployment attempt $attempt of $MAX_RETRIES..."
               echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
               
-              # Wait a moment to ensure connection stability after file copy
-              if [ $attempt -eq 1 ]; then
-                echo "⏳ Waiting 2 seconds for connection stability..."
-                sleep 2
-              fi
-              
-              # Build deployment script and execute via SSH directly
-              # Using same SSH options that worked for file copy
-              # Skip separate verification - go straight to deployment
-              echo "🚀 Executing deployment script..."
+              # Create deployment script file using SCP (which we know works)
+              echo "📝 Creating deployment script on server..."
               printf '%s\n' \
+                '#!/bin/bash' \
                 'set -e' \
                 'APP_DIR="/var/www/trilingo-backend"' \
                 'BACKUP_DIR="/var/www/trilingo-backend-backup"' \
@@ -453,16 +446,45 @@ jobs:
                 '  echo "❌ Service failed to start. Showing logs:"' \
                 '  sudo journalctl -u $SERVICE_NAME --no-pager -n 50' \
                 '  exit 1' \
-                'fi' | ssh -i ~/.ssh/id_rsa \
+                'fi' > /tmp/deploy-script.sh
+              
+              # Copy script to server using SCP (same method that worked for files)
+              if ! scp -i ~/.ssh/id_rsa \
                      -o StrictHostKeyChecking=no \
-                     -o ConnectTimeout=30 \
+                     -o ConnectTimeout=20 \
                      -o ServerAliveInterval=10 \
-                     -o ServerAliveCountMax=6 \
+                     -o ServerAliveCountMax=3 \
+                     -o UserKnownHostsFile=~/.ssh/known_hosts \
+                     /tmp/deploy-script.sh \
+                     ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/deploy-script.sh 2>&1; then
+                echo "❌ Failed to copy deployment script to server"
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  echo "⏳ Retrying in $RETRY_DELAY seconds..."
+                  sleep $RETRY_DELAY
+                  attempt=$((attempt + 1))
+                  continue
+                else
+                  return 1
+                fi
+              fi
+              
+              echo "✅ Script copied. Executing deployment..."
+              
+              # Execute script with minimal SSH command (just run the file)
+              ssh -i ~/.ssh/id_rsa \
+                     -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=20 \
+                     -o ServerAliveInterval=10 \
+                     -o ServerAliveCountMax=3 \
                      -o UserKnownHostsFile=~/.ssh/known_hosts \
                      -o BatchMode=yes \
-                     ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} bash -s 2>&1
+                     ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+                     "chmod +x /tmp/deploy-script.sh && /tmp/deploy-script.sh && rm -f /tmp/deploy-script.sh" 2>&1
               
               SSH_EXIT_CODE=$?
+              
+              # Clean up local script
+              rm -f /tmp/deploy-script.sh
               if [ $SSH_EXIT_CODE -eq 0 ]; then
                 echo ""
                 echo "✅ Deployment completed successfully!"
