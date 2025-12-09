@@ -477,7 +477,7 @@ jobs:
                   sudo journalctl -u $SERVICE_NAME --no-pager -n 50
                   exit 1
                 fi
-REMOTESCRIPT
+              REMOTESCRIPT
               then
                 echo ""
                 echo "✅ Deployment completed successfully!"
