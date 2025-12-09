@@ -22,14 +22,20 @@ jobs:
       - name: Detect backend directory
         id: backend-dir
         run: |
+          echo "🔍 Detecting backend directory structure..."
           if [ -d "Trilingo_Learning_App_Backend" ]; then
+            echo "✅ Found: Trilingo_Learning_App_Backend"
             echo "BACKEND_DIR=Trilingo_Learning_App_Backend" >> $GITHUB_OUTPUT
           elif [ -f "TES_Learning_App.API/TES_Learning_App.API.csproj" ]; then
+            echo "✅ Found: Root directory (TES_Learning_App.API)"
             echo "BACKEND_DIR=." >> $GITHUB_OUTPUT
           else
             echo "❌ Backend directory not found!"
+            echo "📁 Current directory contents:"
+            ls -la
             exit 1
           fi
+          echo "📂 Using BACKEND_DIR: ${{ steps.backend-dir.outputs.BACKEND_DIR }}"
 
       - name: Restore dependencies
         run: dotnet restore
@@ -87,73 +93,165 @@ jobs:
       - name: Copy files to EC2
         run: |
           echo "📦 Copying deployment files to EC2..."
-          scp -i ~/.ssh/id_rsa \
-              -o StrictHostKeyChecking=no \
-              -o ConnectTimeout=20 \
-              deployment-package.zip ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
-          scp -i ~/.ssh/id_rsa \
-              -o StrictHostKeyChecking=no \
-              -o ConnectTimeout=20 \
-              trilingo-backend.service ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/
-          echo "✅ Files copied successfully!"
+          MAX_RETRIES=3
+          RETRY_DELAY=10
+          
+          # Function to copy file with retry
+          copy_with_retry() {
+            local file=$1
+            local dest=$2
+            local attempt=1
+            
+            while [ $attempt -le $MAX_RETRIES ]; do
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "Copying $file (attempt $attempt of $MAX_RETRIES)..."
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              
+              if scp -i ~/.ssh/id_rsa \
+                     -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=30 \
+                     -o ServerAliveInterval=10 \
+                     -o ServerAliveCountMax=3 \
+                     -o UserKnownHostsFile=~/.ssh/known_hosts \
+                     "$file" "$dest" 2>&1; then
+                echo ""
+                echo "✅ Successfully copied $file"
+                return 0
+              else
+                echo ""
+                echo "❌ Copy attempt $attempt failed"
+                
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  echo "⏳ Retrying in $RETRY_DELAY seconds..."
+                  sleep $RETRY_DELAY
+                  attempt=$((attempt + 1))
+                else
+                  echo ""
+                  echo "❌ Failed to copy $file after $MAX_RETRIES attempts"
+                  return 1
+                fi
+              fi
+            done
+          }
+          
+          # Copy deployment package
+          if ! copy_with_retry "deployment-package.zip" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
+            echo ""
+            echo "❌ Deployment aborted: Cannot copy deployment package"
+            exit 1
+          fi
+          
+          # Copy service file
+          if ! copy_with_retry "trilingo-backend.service" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
+            echo ""
+            echo "❌ Deployment aborted: Cannot copy service file"
+            exit 1
+          fi
+          
+          echo ""
+          echo "✅ All files copied successfully!"
 
       - name: Deploy to EC2
         run: |
           echo "🚀 Starting deployment to EC2..."
-          ssh -i ~/.ssh/id_rsa \
-              -o StrictHostKeyChecking=no \
-              -o ConnectTimeout=20 \
-              -o ServerAliveInterval=10 \
-              -o ServerAliveCountMax=3 \
-              ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-              "set -e && \
-               APP_DIR=\"/var/www/trilingo-backend\" && \
-               BACKUP_DIR=\"/var/www/trilingo-backend-backup\" && \
-               SERVICE_NAME=\"trilingo-backend\" && \
-               EC2_USER=\"${{ secrets.EC2_USER }}\" && \
-               echo \"🚀 Starting deployment...\" && \
-               sudo mkdir -p \$APP_DIR && \
-               sudo mkdir -p \$BACKUP_DIR && \
-               if sudo systemctl is-active --quiet \$SERVICE_NAME; then \
-                 echo \"⏸️  Stopping service...\" && \
-                 sudo systemctl stop \$SERVICE_NAME || true; \
-               fi && \
-               if [ -d \"\$APP_DIR\" ] && [ \"\$(ls -A \$APP_DIR)\" ]; then \
-                 echo \"💾 Creating backup...\" && \
-                 sudo cp -r \$APP_DIR/* \$BACKUP_DIR/\$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true; \
-               fi && \
-               echo \"📦 Extracting package...\" && \
-               TEMP_DIR=\$(mktemp -d) && \
-               sudo unzip -q /tmp/deployment-package.zip -d \$TEMP_DIR && \
-               if [ -d \"\$APP_DIR/wwwroot\" ]; then \
-                 echo \"  - Preserving wwwroot...\" && \
-                 sudo mkdir -p \$TEMP_DIR/wwwroot && \
-                 sudo cp -r \$APP_DIR/wwwroot/* \$TEMP_DIR/wwwroot/ 2>/dev/null || true; \
-               fi && \
-               echo \"🧹 Updating files...\" && \
-               sudo rm -rf \$APP_DIR/* && \
-               sudo cp -r \$TEMP_DIR/* \$APP_DIR/ && \
-               echo \"📝 Updating Systemd Service...\" && \
-               sudo mv /tmp/trilingo-backend.service /etc/systemd/system/\$SERVICE_NAME.service && \
-               echo \"🔐 Setting permissions...\" && \
-               sudo chown -R \$EC2_USER:\$EC2_USER \$APP_DIR && \
-               sudo chmod +x \$APP_DIR/TES_Learning_App.API.dll || true && \
-               echo \"🔄 Restarting service...\" && \
-               sudo systemctl daemon-reload && \
-               sudo systemctl enable \$SERVICE_NAME && \
-               sudo systemctl start \$SERVICE_NAME && \
-               sudo rm -rf \$TEMP_DIR && \
-               sudo rm -f /tmp/deployment-package.zip && \
-               echo \"⏳ Waiting for service to initialize...\" && \
-               sleep 5 && \
-               if sudo systemctl is-active --quiet \$SERVICE_NAME; then \
-                 echo \"✅ Service started successfully!\" && \
-                 sudo systemctl status \$SERVICE_NAME --no-pager -l; \
-               else \
-                 echo \"❌ Service failed to start. Showing logs:\" && \
-                 sudo journalctl -u \$SERVICE_NAME --no-pager -n 50 && \
-                 exit 1; \
-               fi"
+          MAX_RETRIES=3
+          RETRY_DELAY=10
+          
+          # Function to deploy with retry
+          deploy_with_retry() {
+            local attempt=1
+            
+            while [ $attempt -le $MAX_RETRIES ]; do
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "Deployment attempt $attempt of $MAX_RETRIES..."
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              
+              if ssh -i ~/.ssh/id_rsa \
+                     -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=30 \
+                     -o ServerAliveInterval=10 \
+                     -o ServerAliveCountMax=3 \
+                     -o UserKnownHostsFile=~/.ssh/known_hosts \
+                     -o BatchMode=yes \
+                     ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+                     "set -e && \
+                      APP_DIR=\"/var/www/trilingo-backend\" && \
+                      BACKUP_DIR=\"/var/www/trilingo-backend-backup\" && \
+                      SERVICE_NAME=\"trilingo-backend\" && \
+                      EC2_USER=\"${{ secrets.EC2_USER }}\" && \
+                      echo \"🚀 Starting deployment...\" && \
+                      sudo mkdir -p \$APP_DIR && \
+                      sudo mkdir -p \$BACKUP_DIR && \
+                      if sudo systemctl is-active --quiet \$SERVICE_NAME; then \
+                        echo \"⏸️  Stopping service...\" && \
+                        sudo systemctl stop \$SERVICE_NAME || true; \
+                      fi && \
+                      if [ -d \"\$APP_DIR\" ] && [ \"\$(ls -A \$APP_DIR)\" ]; then \
+                        echo \"💾 Creating backup...\" && \
+                        sudo cp -r \$APP_DIR/* \$BACKUP_DIR/\$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true; \
+                      fi && \
+                      echo \"📦 Extracting package...\" && \
+                      TEMP_DIR=\$(mktemp -d) && \
+                      sudo unzip -q /tmp/deployment-package.zip -d \$TEMP_DIR && \
+                      if [ -d \"\$APP_DIR/wwwroot\" ]; then \
+                        echo \"  - Preserving wwwroot...\" && \
+                        sudo mkdir -p \$TEMP_DIR/wwwroot && \
+                        sudo cp -r \$APP_DIR/wwwroot/* \$TEMP_DIR/wwwroot/ 2>/dev/null || true; \
+                      fi && \
+                      echo \"🧹 Updating files...\" && \
+                      sudo rm -rf \$APP_DIR/* && \
+                      sudo cp -r \$TEMP_DIR/* \$APP_DIR/ && \
+                      echo \"📝 Updating Systemd Service...\" && \
+                      sudo mv /tmp/trilingo-backend.service /etc/systemd/system/\$SERVICE_NAME.service && \
+                      echo \"🔐 Setting permissions...\" && \
+                      sudo chown -R \$EC2_USER:\$EC2_USER \$APP_DIR && \
+                      sudo chmod +x \$APP_DIR/TES_Learning_App.API.dll || true && \
+                      echo \"🔄 Restarting service...\" && \
+                      sudo systemctl daemon-reload && \
+                      sudo systemctl enable \$SERVICE_NAME && \
+                      sudo systemctl start \$SERVICE_NAME && \
+                      sudo rm -rf \$TEMP_DIR && \
+                      sudo rm -f /tmp/deployment-package.zip && \
+                      echo \"⏳ Waiting for service to initialize...\" && \
+                      sleep 5 && \
+                      if sudo systemctl is-active --quiet \$SERVICE_NAME; then \
+                        echo \"✅ Service started successfully!\" && \
+                        sudo systemctl status \$SERVICE_NAME --no-pager -l; \
+                      else \
+                        echo \"❌ Service failed to start. Showing logs:\" && \
+                        sudo journalctl -u \$SERVICE_NAME --no-pager -n 50 && \
+                        exit 1; \
+                      fi" 2>&1; then
+                echo ""
+                echo "✅ Deployment completed successfully!"
+                return 0
+              else
+                SSH_EXIT_CODE=$?
+                echo ""
+                echo "❌ Deployment attempt $attempt failed (exit code: $SSH_EXIT_CODE)"
+                
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  echo "⏳ Retrying in $RETRY_DELAY seconds..."
+                  sleep $RETRY_DELAY
+                  attempt=$((attempt + 1))
+                else
+                  echo ""
+                  echo "❌ Deployment failed after $MAX_RETRIES attempts"
+                  return 1
+                fi
+              fi
+            done
+          }
+          
+          # Execute deployment with retry
+          if deploy_with_retry; then
+            echo ""
+            echo "✅ Deployment process completed!"
+          else
+            echo ""
+            echo "❌ Deployment failed after all retry attempts"
+            exit 1
+          fi
 
       - name: Cleanup SSH key
         if: always()
