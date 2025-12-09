@@ -395,8 +395,33 @@ jobs:
               echo "Deployment attempt $attempt of $MAX_RETRIES..."
               echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
               
-              # Execute deployment directly via SSH
-              # Build and execute deployment script via SSH using printf to avoid YAML << conflict
+              # First, verify SSH connection is working
+              echo "🔍 Verifying SSH connection..."
+              if ! ssh -i ~/.ssh/id_rsa \
+                     -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=60 \
+                     -o ServerAliveInterval=5 \
+                     -o ServerAliveCountMax=12 \
+                     -o TCPKeepAlive=yes \
+                     -o UserKnownHostsFile=~/.ssh/known_hosts \
+                     -o BatchMode=yes \
+                     ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+                     "echo 'SSH connection verified'" 2>&1; then
+                echo "❌ Cannot establish SSH connection. Skipping deployment attempt."
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  echo "⏳ Retrying in $RETRY_DELAY seconds..."
+                  sleep $RETRY_DELAY
+                  attempt=$((attempt + 1))
+                  continue
+                else
+                  return 1
+                fi
+              fi
+              
+              echo "✅ SSH connection verified. Starting deployment..."
+              
+              # Build deployment script and execute via SSH with improved connection settings
+              # Using printf to build script and pipe to SSH for better reliability
               printf '%s\n' \
                 'set -e' \
                 'APP_DIR="/var/www/trilingo-backend"' \
@@ -447,12 +472,14 @@ jobs:
                 '  exit 1' \
                 'fi' | ssh -i ~/.ssh/id_rsa \
                      -o StrictHostKeyChecking=no \
-                     -o ConnectTimeout=30 \
-                     -o ServerAliveInterval=10 \
-                     -o ServerAliveCountMax=3 \
+                     -o ConnectTimeout=60 \
+                     -o ServerAliveInterval=5 \
+                     -o ServerAliveCountMax=12 \
+                     -o TCPKeepAlive=yes \
                      -o UserKnownHostsFile=~/.ssh/known_hosts \
                      -o BatchMode=yes \
-                     ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} bash -s
+                     ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} bash -s 2>&1
+              
               SSH_EXIT_CODE=$?
               if [ $SSH_EXIT_CODE -eq 0 ]; then
                 echo ""
