@@ -84,48 +84,65 @@ jobs:
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           
-          # Basic validation - check if key file exists and has content
-          echo "🔍 Validating SSH key..."
-          if [ ! -s ~/.ssh/id_rsa ]; then
-            echo "❌ Error: SSH key file is empty"
-            echo ""
-            echo "📋 HOW TO FIX:"
-            echo "   Your EC2_SSH_PRIVATE_KEY secret is empty or not set correctly."
-            echo "   Please add the key content to GitHub Secrets."
+          # Basic check - verify key file was created
+          if [ ! -f ~/.ssh/id_rsa ]; then
+            echo "❌ Error: Failed to create SSH key file"
             exit 1
           fi
           
-          # Check if key has BEGIN/END markers
-          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
-            echo "❌ Error: SSH key format is invalid (missing BEGIN marker)"
-            echo ""
-            echo "📋 HOW TO FIX:"
-            echo "   1. Open your backend-key.pem file in a text editor"
-            echo "   2. Select ALL content (Ctrl+A) - make sure to include:"
-            echo "      - -----BEGIN RSA PRIVATE KEY----- (or BEGIN PRIVATE KEY)"
-            echo "      - All the key content in the middle"
-            echo "      - -----END RSA PRIVATE KEY----- (or END PRIVATE KEY)"
-            echo "   3. Copy it (Ctrl+C)"
-            echo "   4. Go to: https://github.com/Lakshiga/Trilingo_Backend/settings/secrets/actions"
-            echo "   5. Click pencil icon next to EC2_SSH_PRIVATE_KEY"
-            echo "   6. Delete old content, paste new content"
-            echo "   7. Make sure NO extra spaces before/after"
-            echo "   8. Click 'Update secret'"
-            exit 1
-          fi
-          
-          if ! grep -q "END.*PRIVATE KEY" ~/.ssh/id_rsa; then
-            echo "❌ Error: SSH key format is invalid (missing END marker)"
-            echo ""
-            echo "📋 Same fix as above - make sure to include the END line"
-            exit 1
-          fi
-          
-          echo "✅ SSH key format looks valid"
+          echo "✅ SSH key file created"
           
           # Add host to known_hosts
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
           echo "✅ SSH configuration completed"
+
+      - name: Test SSH Connection
+        run: |
+          echo "🔍 Testing SSH connection..."
+          if ssh -i ~/.ssh/id_rsa \
+                 -o StrictHostKeyChecking=no \
+                 -o ConnectTimeout=10 \
+                 -o BatchMode=yes \
+                 ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+                 "echo 'SSH connection successful'" 2>&1; then
+            echo "✅ SSH connection test passed!"
+          else
+            SSH_ERROR=$?
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "❌ SSH Connection Failed"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            echo "📋 HOW TO FIX YOUR SSH KEY IN GITHUB SECRETS:"
+            echo ""
+            echo "1. Open your key file:"
+            echo "   C:\\Users\\ASUS\\Downloads\\backend-key.pem"
+            echo ""
+            echo "2. Open it in Notepad or VS Code"
+            echo ""
+            echo "3. Select ALL (Ctrl+A) and Copy (Ctrl+C)"
+            echo "   Make sure you copy EVERYTHING including:"
+            echo "   - -----BEGIN RSA PRIVATE KEY-----"
+            echo "   - All the key content"
+            echo "   - -----END RSA PRIVATE KEY-----"
+            echo ""
+            echo "4. Go to GitHub Secrets:"
+            echo "   https://github.com/Lakshiga/Trilingo_Backend/settings/secrets/actions"
+            echo ""
+            echo "5. Click the pencil icon ✏️ next to EC2_SSH_PRIVATE_KEY"
+            echo ""
+            echo "6. DELETE all old content"
+            echo ""
+            echo "7. PASTE the entire key (Ctrl+V)"
+            echo ""
+            echo "8. Make sure NO extra spaces before or after"
+            echo ""
+            echo "9. Click 'Update secret'"
+            echo ""
+            echo "10. Re-run this workflow"
+            echo ""
+            exit 1
+          fi
 
       - name: Copy files to EC2
         run: |
