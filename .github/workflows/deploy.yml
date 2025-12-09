@@ -395,33 +395,66 @@ jobs:
               echo "Deployment attempt $attempt of $MAX_RETRIES..."
               echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
               
-              # First, verify SSH connection is working
+              # Wait a moment to ensure connection stability after file copy
+              if [ $attempt -eq 1 ]; then
+                echo "⏳ Waiting 3 seconds for connection stability..."
+                sleep 3
+              fi
+              
+              # Use same SSH options that worked for file copy
+              # First, verify SSH connection is working with same settings as SCP
               echo "🔍 Verifying SSH connection..."
               if ! ssh -i ~/.ssh/id_rsa \
                      -o StrictHostKeyChecking=no \
-                     -o ConnectTimeout=60 \
-                     -o ServerAliveInterval=5 \
-                     -o ServerAliveCountMax=12 \
-                     -o TCPKeepAlive=yes \
+                     -o ConnectTimeout=20 \
+                     -o ServerAliveInterval=10 \
+                     -o ServerAliveCountMax=3 \
                      -o UserKnownHostsFile=~/.ssh/known_hosts \
                      -o BatchMode=yes \
                      ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
                      "echo 'SSH connection verified'" 2>&1; then
-                echo "❌ Cannot establish SSH connection. Skipping deployment attempt."
+                echo "❌ Cannot establish SSH connection."
+                echo "🔍 Diagnostic: Connection to ${{ secrets.EC2_HOST }}:22 timed out"
+                
                 if [ $attempt -lt $MAX_RETRIES ]; then
                   echo "⏳ Retrying in $RETRY_DELAY seconds..."
                   sleep $RETRY_DELAY
                   attempt=$((attempt + 1))
                   continue
                 else
+                  echo ""
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "❌ CRITICAL: Cannot establish SSH connection"
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo ""
+                  echo "🔴 The deployment cannot continue without SSH access!"
+                  echo ""
+                  echo "📋 TROUBLESHOOTING STEPS:"
+                  echo ""
+                  echo "1. Verify EC2 instance is running:"
+                  echo "   - Go to AWS Console → EC2 → Instances"
+                  echo "   - Check instance status is 'running'"
+                  echo ""
+                  echo "2. Verify Security Group allows SSH:"
+                  echo "   - Select your EC2 instance"
+                  echo "   - Click 'Security' tab"
+                  echo "   - Check Security Group inbound rules"
+                  echo "   - Ensure SSH (port 22) is allowed from 0.0.0.0/0"
+                  echo ""
+                  echo "3. Verify EC2_HOST secret is correct:"
+                  echo "   - Should match instance Public IP or Public DNS"
+                  echo ""
+                  echo "4. Test SSH manually from your local machine:"
+                  echo "   ssh -i your-key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}"
+                  echo ""
                   return 1
                 fi
               fi
               
               echo "✅ SSH connection verified. Starting deployment..."
               
-              # Build deployment script and execute via SSH with improved connection settings
-              # Using printf to build script and pipe to SSH for better reliability
+              # Build deployment script and execute via SSH
+              # Using same SSH options that worked for file copy
               printf '%s\n' \
                 'set -e' \
                 'APP_DIR="/var/www/trilingo-backend"' \
@@ -472,10 +505,9 @@ jobs:
                 '  exit 1' \
                 'fi' | ssh -i ~/.ssh/id_rsa \
                      -o StrictHostKeyChecking=no \
-                     -o ConnectTimeout=60 \
-                     -o ServerAliveInterval=5 \
-                     -o ServerAliveCountMax=12 \
-                     -o TCPKeepAlive=yes \
+                     -o ConnectTimeout=20 \
+                     -o ServerAliveInterval=10 \
+                     -o ServerAliveCountMax=3 \
                      -o UserKnownHostsFile=~/.ssh/known_hosts \
                      -o BatchMode=yes \
                      ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} bash -s 2>&1
