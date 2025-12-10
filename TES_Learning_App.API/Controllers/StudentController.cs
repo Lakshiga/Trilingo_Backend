@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using TES_Learning_App.Application_Layer.DTOs.Student.Requests;
 using TES_Learning_App.Application_Layer.DTOs.Student.Response;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
@@ -15,7 +14,12 @@ namespace TES_Learning_App.API.Controllers
 
         private Guid GetParentId()
         {
-            return Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier));
+            var userId = GetUserId();
+            if (userId == null)
+            {
+                throw new UnauthorizedAccessException("User not authenticated");
+            }
+            return userId.Value;
         }
 
         [HttpPost] // POST api/students
@@ -38,8 +42,8 @@ namespace TES_Learning_App.API.Controllers
         public async Task<ActionResult<StudentDto>> GetStudentById(Guid studentId)
         {
             var parentId = GetParentId();
-            // We will add the logic to get a single student later.
-            return Ok(); // Placeholder
+            var student = await _studentService.GetStudentByIdAsync(studentId, parentId);
+            return HandleGetById(student, "Student", studentId);
         }
 
         [HttpPut("{studentId}")] // PUT api/students/{guid}

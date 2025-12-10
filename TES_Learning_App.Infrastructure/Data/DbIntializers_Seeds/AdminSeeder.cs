@@ -45,7 +45,9 @@ namespace TES_Learning_App.Infrastructure.Data.DbIntializers_Seeds
                 PasswordHash = passwordHash,
                 PasswordSalt = passwordSalt,
                 RoleId = adminRole.Id,
-                Role = adminRole
+                Role = adminRole,
+                IsFirstLogin = true,
+                MustChangePassword = true // Force password change on first login
             };
 
             context.Users.Add(adminUser);
@@ -63,6 +65,37 @@ namespace TES_Learning_App.Infrastructure.Data.DbIntializers_Seeds
 
             context.Admins.Add(adminProfile);
             context.SaveChanges();
+
+            // Create SuperAdmin user if SuperAdmin role exists
+            var superAdminRole = context.Roles.FirstOrDefault(r => r.RoleName == "SuperAdmin");
+            if (superAdminRole != null)
+            {
+                var existingSuperAdmin = context.Users
+                    .FirstOrDefault(u => u.Username == "superadmin" || u.Email == "superadmin@teslearning.com");
+                
+                if (existingSuperAdmin == null)
+                {
+                    CreatePasswordHash("SuperAdmin123!", out byte[] superAdminHash, out byte[] superAdminSalt);
+                    
+                    var superAdminUser = new User
+                    {
+                        Id = Guid.NewGuid(),
+                        Username = "superadmin",
+                        Email = "superadmin@teslearning.com",
+                        PasswordHash = superAdminHash,
+                        PasswordSalt = superAdminSalt,
+                        RoleId = superAdminRole.Id,
+                        Role = superAdminRole,
+                        IsFirstLogin = true,
+                        MustChangePassword = true
+                    };
+
+                    context.Users.Add(superAdminUser);
+                    context.SaveChanges();
+                    Console.WriteLine("SuperAdmin user created successfully!");
+                }
+            }
+
             Console.WriteLine("Admin user created successfully!");
         }
 

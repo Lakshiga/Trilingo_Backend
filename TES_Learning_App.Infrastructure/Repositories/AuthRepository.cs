@@ -64,6 +64,11 @@ namespace TES_Learning_App.Infrastructure.Repositories
                                  .ToListAsync();
         }
 
-        
+        public async Task<User?> GetUserByResetTokenAsync(string token)
+        {
+            return await _context.Users
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.PasswordResetToken == token);
+        }
     }
 }

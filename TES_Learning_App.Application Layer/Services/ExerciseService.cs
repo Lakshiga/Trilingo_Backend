@@ -82,10 +82,8 @@ namespace TES_Learning_App.Application_Layer.Services
 
         public async Task<IEnumerable<ExerciseDto>> GetByActivityIdAsync(int activityId)
         {
-            var exercises = await _unitOfWork.ExerciseRepository.GetAllAsync();
-            return exercises.Where(e => e.ActivityId == activityId)
-                           .OrderBy(e => e.SequenceOrder)
-                           .Select(MapToDto);
+            var exercises = await _unitOfWork.ExerciseRepository.GetByActivityIdAsync(activityId);
+            return exercises.Select(MapToDto);
         }
 
         public async Task<ExerciseDto?> GetByIdAsync(int id)

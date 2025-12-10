@@ -15,5 +15,6 @@ namespace TES_Learning_App.Application_Layer.DTOs.Auth.Response
         public string? Email { get; set; }
         public string? ProfileImageUrl { get; set; }
         public string? Role { get; set; }
+        public bool MustChangePassword { get; set; } = false;
     }
 }

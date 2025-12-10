@@ -11,50 +11,29 @@ namespace TES_Learning_App.API.Controllers
     public class AuthController : BaseApiController
     {
         private readonly IAuthService _authService;
-        public AuthController(IAuthService authService) { _authService = authService; }
+
+        public AuthController(IAuthService authService)
+        {
+            _authService = authService;
+        }
 
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterDto dto)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
-            }
-
-            try
-            {
-                var result = await _authService.RegisterAsync(dto);
-                if (!result.IsSuccess) return BadRequest(result);
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { isSuccess = false, message = $"An error occurred during registration: {ex.Message}" });
-            }
+            var result = await _authService.RegisterAsync(dto);
+            return HandleServiceResult(result);
         }
 
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginDto dto)
         {
-            if (!ModelState.IsValid)
+            var result = await _authService.LoginAsync(dto);
+            if (!result.IsSuccess)
             {
-                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
+                var errorResponse = ErrorResponseService.CreateUnauthorizedResponse<AuthResponseDto>(result.Message);
+                return Unauthorized(errorResponse);
             }
-
-            try
-            {
-                var result = await _authService.LoginAsync(dto);
-                if (!result.IsSuccess) return Unauthorized(result);
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new AuthResponseDto 
-                { 
-                    IsSuccess = false, 
-                    Message = $"An error occurred during login: {ex.Message}" 
-                });
-            }
+            return Ok(result);
         }
 
         // Example of a secure endpoint
@@ -63,7 +42,7 @@ namespace TES_Learning_App.API.Controllers
         public IActionResult TestAuth()
         {
             // We can get the logged-in user's info from the token claims
-            var username = User.Identity?.Name;
+            var username = GetUsername();
             return Ok($"Hello, {username}! You have successfully accessed a secure endpoint.");
         }
 
@@ -87,77 +66,96 @@ namespace TES_Learning_App.API.Controllers
         {
             if (file == null || file.Length == 0)
             {
-                return BadRequest(new { message = "No file uploaded" });
+                var errorResponse = ErrorResponseService.CreateErrorResponse<AuthResponseDto>("No file uploaded", 400);
+                return BadRequest(errorResponse);
             }
 
-            try
+            var username = GetUsername();
+            if (string.IsNullOrEmpty(username))
             {
-                var result = await _authService.UploadProfileImageAsync(User.Identity?.Name, file);
-                if (!result.IsSuccess)
-                {
-                    return BadRequest(result);
-                }
-                return Ok(result);
+                var errorResponse = ErrorResponseService.CreateUnauthorizedResponse<AuthResponseDto>("User not authenticated");
+                return Unauthorized(errorResponse);
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error uploading profile image", error = ex.Message });
-            }
+
+            var result = await _authService.UploadProfileImageAsync(username, file);
+            return HandleServiceResult(result);
         }
 
         [HttpGet("profile")]
         [Authorize]
         public async Task<IActionResult> GetUserProfile()
         {
-            try
+            var username = GetUsername();
+            if (string.IsNullOrEmpty(username))
             {
-                var username = User.Identity?.Name;
-                if (string.IsNullOrEmpty(username))
-                {
-                    return Unauthorized(new { message = "User not found" });
-                }
+                var errorResponse = ErrorResponseService.CreateUnauthorizedResponse<AuthResponseDto>("User not authenticated");
+                return Unauthorized(errorResponse);
+            }
 
-                var result = await _authService.GetUserProfileAsync(username);
-                if (!result.IsSuccess)
-                {
-                    return NotFound(result);
-                }
-                return Ok(result);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error getting user profile", error = ex.Message });
-            }
+            var result = await _authService.GetUserProfileAsync(username);
+            return HandleServiceResult(result);
         }
 
         [HttpPut("update-profile")]
         [Authorize]
         public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
         {
-            if (!ModelState.IsValid)
+            var username = GetUsername();
+            if (string.IsNullOrEmpty(username))
             {
-                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
+                var errorResponse = ErrorResponseService.CreateUnauthorizedResponse<AuthResponseDto>("User not authenticated");
+                return Unauthorized(errorResponse);
             }
 
-            try
-            {
-                var username = User.Identity?.Name;
-                if (string.IsNullOrEmpty(username))
-                {
-                    return Unauthorized(new { message = "User not found" });
-                }
+            var result = await _authService.UpdateProfileAsync(username, dto);
+            return HandleServiceResult(result);
+        }
 
-                var result = await _authService.UpdateProfileAsync(username, dto);
-                if (!result.IsSuccess)
-                {
-                    return BadRequest(result);
-                }
-                return Ok(result);
-            }
-            catch (Exception ex)
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
+        {
+            var result = await _authService.ForgotPasswordAsync(dto);
+            return HandleServiceResult(result);
+        }
+
+        [HttpPost("reset-password-otp")]
+        public async Task<IActionResult> ResetPasswordWithOtp([FromBody] ResetPasswordWithOtpDto dto)
+        {
+            var result = await _authService.ResetPasswordWithOtpAsync(dto);
+            return HandleServiceResult(result);
+        }
+
+        [HttpPost("reset-password-token")]
+        public async Task<IActionResult> ResetPasswordWithToken([FromBody] ResetPasswordWithTokenDto dto)
+        {
+            var result = await _authService.ResetPasswordWithTokenAsync(dto);
+            return HandleServiceResult(result);
+        }
+
+        [HttpPost("change-password")]
+        [Authorize]
+        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
+        {
+            var username = GetUsername();
+            if (string.IsNullOrEmpty(username))
             {
-                return StatusCode(500, new { message = "Error updating profile", error = ex.Message });
+                var errorResponse = ErrorResponseService.CreateUnauthorizedResponse<AuthResponseDto>("User not authenticated");
+                return Unauthorized(errorResponse);
             }
+
+            var result = await _authService.ChangePasswordAsync(username, dto);
+            
+            // If password changed successfully and was first login, return special response
+            if (result.IsSuccess && result.MustChangePassword)
+            {
+                return Ok(new { 
+                    isSuccess = true, 
+                    message = "Password changed successfully. Please login again.",
+                    mustLoginAgain = true 
+                });
+            }
+            
+            return HandleServiceResult(result);
         }
 
         [HttpPost("logout")]

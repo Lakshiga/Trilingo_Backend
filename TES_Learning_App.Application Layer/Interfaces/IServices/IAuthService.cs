@@ -19,5 +19,9 @@ namespace TES_Learning_App.Application_Layer.Interfaces.IServices
         Task<AuthResponseDto> UploadProfileImageAsync(string username, IFormFile file);
         Task<AuthResponseDto> GetUserProfileAsync(string username);
         Task<AuthResponseDto> UpdateProfileAsync(string username, UpdateProfileDto dto);
+        Task<AuthResponseDto> ForgotPasswordAsync(ForgotPasswordDto dto);
+        Task<AuthResponseDto> ResetPasswordWithOtpAsync(ResetPasswordWithOtpDto dto);
+        Task<AuthResponseDto> ResetPasswordWithTokenAsync(ResetPasswordWithTokenDto dto);
+        Task<AuthResponseDto> ChangePasswordAsync(string username, ChangePasswordDto dto);
     }
 }

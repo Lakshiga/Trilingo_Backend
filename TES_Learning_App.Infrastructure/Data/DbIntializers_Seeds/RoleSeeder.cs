@@ -19,7 +19,8 @@ namespace TES_Learning_App.Infrastructure.Data.DbIntializers_Seeds
                 {
                     new Role { RoleName = "Parent" },
                     new Role { RoleName = "Admin" },
-                    new Role { RoleName = "AdultLearner" }
+                    new Role { RoleName = "AdultLearner" },
+                    new Role { RoleName = "SuperAdmin" }
                 };
 
                 context.Roles.AddRange(roles);

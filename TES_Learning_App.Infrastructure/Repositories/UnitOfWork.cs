@@ -19,8 +19,8 @@ namespace TES_Learning_App.Infrastructure.Repositories
         public IGenericRepository<MainActivity> MainActivityRepository { get; private set; }
         public IGenericRepository<ActivityType> ActivityTypeRepository { get; private set; }
         public IActivityRepository ActivityRepository { get; private set; }
-        public IGenericRepository<Exercise> ExerciseRepository { get; private set; }
-        public IGenericRepository<StudentProgress> StudentProgressRepository { get; private set; }
+        public IExerciseRepository ExerciseRepository { get; private set; }
+        public IStudentProgressRepository StudentProgressRepository { get; private set; }
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -36,8 +36,8 @@ namespace TES_Learning_App.Infrastructure.Repositories
             MainActivityRepository = new GenericRepository<MainActivity>(_context);
             ActivityTypeRepository = new GenericRepository<ActivityType>(_context);
             ActivityRepository = new ActivityRepository(_context);
-            ExerciseRepository = new GenericRepository<Exercise>(_context);
-            StudentProgressRepository = new GenericRepository<StudentProgress>(_context);
+            ExerciseRepository = new ExerciseRepository(_context);
+            StudentProgressRepository = new StudentProgressRepository(_context);
         }
 
         public async Task<int> CompleteAsync() => await _context.SaveChangesAsync();

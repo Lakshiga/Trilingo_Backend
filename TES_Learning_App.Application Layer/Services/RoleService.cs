@@ -8,6 +8,7 @@ using TES_Learning_App.Application_Layer.DTOs.Role.Response;
 using TES_Learning_App.Application_Layer.Interfaces.IRepositories;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Domain.Entities;
+using TES_Learning_App.Application_Layer.Exceptions;
 
 namespace TES_Learning_App.Application_Layer.Services
 {
@@ -23,12 +24,12 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task<RoleDto> CreateAsync(CreateRoleDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.RoleName))
-                throw new Exception("Role Name is required.");
+                throw new ValidationException("RoleName", new[] { "Role Name is required." });
 
             // Check for duplicates
             var existingRole = await _unitOfWork.RoleRepository.FindAsync(r => r.RoleName.ToLower() == dto.RoleName.ToLower());
             if (existingRole.Any())
-                throw new Exception($"Role with name '{dto.RoleName}' already exists.");
+                throw new ValidationException("RoleName", new[] { $"Role with name '{dto.RoleName}' already exists." });
 
             var role = new Role { RoleName = dto.RoleName };
 
@@ -41,13 +42,13 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task DeleteAsync(Guid id)
         {
             var role = await _unitOfWork.RoleRepository.GetByIdAsync(id);
-            if (role == null) throw new Exception("Role not found.");
+            if (role == null) throw new KeyNotFoundException("Role not found.");
 
             // Industrial Practice: Add a check to prevent deleting a role that is in use.
             var usersInRole = await _unitOfWork.AuthRepository.FindUsersByRoleIdAsync(id);
             if (usersInRole.Any())
             {
-                throw new Exception($"Cannot delete role '{role.RoleName}' because it is assigned to users.");
+                throw new ValidationException("Role", new[] { $"Cannot delete role '{role.RoleName}' because it is assigned to users." });
             }
             await _unitOfWork.RoleRepository.DeleteAsync(role);
             await _unitOfWork.CompleteAsync();
@@ -68,7 +69,7 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task UpdateAsync(Guid id, UpdateRoleDto dto)
         {
             var role = await _unitOfWork.RoleRepository.GetByIdAsync(id);
-            if (role == null) throw new Exception("Role not found.");
+            if (role == null) throw new KeyNotFoundException("Role not found.");
 
             role.RoleName = dto.RoleName;
 

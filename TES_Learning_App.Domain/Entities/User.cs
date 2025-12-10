@@ -43,5 +43,19 @@ namespace TES_Learning_App.Domain.Entities
 
         // One-to-one relationship with an Admin profile
         public Admin? AdminProfile { get; set; }
+
+        // Password Reset Fields
+        [StringLength(500)]
+        public string? PasswordResetToken { get; set; }
+        public DateTime? PasswordResetTokenExpiry { get; set; }
+        
+        [StringLength(10)]
+        public string? PasswordResetOtp { get; set; }
+        public DateTime? PasswordResetOtpExpiry { get; set; }
+        public int PasswordResetOtpAttempts { get; set; } = 0;
+
+        // First-Time Login & Password Change Fields
+        public bool IsFirstLogin { get; set; } = true;
+        public bool MustChangePassword { get; set; } = false;
     }
 }

@@ -24,10 +24,10 @@ namespace TES_Learning_App.Application_Layer.Interfaces.IRepositories
         IGenericRepository<MainActivity> MainActivityRepository { get; }
         IGenericRepository<ActivityType> ActivityTypeRepository { get; }
         IActivityRepository ActivityRepository { get; }
-        IGenericRepository<Exercise> ExerciseRepository { get; }
+        IExerciseRepository ExerciseRepository { get; }
 
         // Bridge Repository
-        IGenericRepository<StudentProgress> StudentProgressRepository { get; } // <-- ADD THIS
+        IStudentProgressRepository StudentProgressRepository { get; }
 
         // The transactional save method
         Task<int> CompleteAsync();

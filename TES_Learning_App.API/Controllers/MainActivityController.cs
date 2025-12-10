@@ -1,10 +1,8 @@
-﻿using System;
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TES_Learning_App.Application_Layer.DTOs.MainActivity.Requests;
 using TES_Learning_App.Application_Layer.DTOs.MainActivity.Response;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
-using TES_Learning_App.Application_Layer.Services;
 
 namespace TES_Learning_App.API.Controllers
 {
@@ -31,8 +29,7 @@ namespace TES_Learning_App.API.Controllers
         public async Task<ActionResult<MainActivityDto>> GetById(int id)
         {
             var mainActivity = await _mainActivityService.GetByIdAsync(id);
-            if (mainActivity == null) return NotFound();
-            return Ok(mainActivity);
+            return HandleGetById(mainActivity, "MainActivity", id);
         }
 
         // POST: api/mainactivities - Only Admin can create
@@ -40,20 +37,8 @@ namespace TES_Learning_App.API.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<MainActivityDto>> Create(CreateMainActivityDto dto)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
-            }
-
-            try
-            {
-                var newMainActivity = await _mainActivityService.CreateAsync(dto);
-                return CreatedAtAction(nameof(GetById), new { id = newMainActivity.Id }, newMainActivity);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { isSuccess = false, message = $"Error creating main activity: {ex.Message}" });
-            }
+            var newMainActivity = await _mainActivityService.CreateAsync(dto);
+            return CreatedAtAction(nameof(GetById), new { id = newMainActivity.Id }, newMainActivity);
         }
 
         // PUT: api/mainactivities/{id} - Only Admin can update
@@ -61,29 +46,8 @@ namespace TES_Learning_App.API.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(int id, UpdateMainActivityDto dto)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(new { isSuccess = false, message = "Validation failed", errors = ModelState });
-            }
-
-            if (id <= 0)
-            {
-                return BadRequest(new { isSuccess = false, message = "Invalid main activity ID" });
-            }
-
-            try
-            {
-                await _mainActivityService.UpdateAsync(id, dto);
-                return NoContent();
-            }
-            catch (KeyNotFoundException)
-            {
-                return NotFound(new { isSuccess = false, message = "Main activity not found" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { isSuccess = false, message = $"Error updating main activity: {ex.Message}" });
-            }
+            await _mainActivityService.UpdateAsync(id, dto);
+            return NoContent();
         }
 
         // DELETE: api/mainactivities/{id} - Only Admin can delete
@@ -91,24 +55,8 @@ namespace TES_Learning_App.API.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Delete(int id)
         {
-            if (id <= 0)
-            {
-                return BadRequest(new { isSuccess = false, message = "Invalid main activity ID" });
-            }
-
-            try
-            {
-                await _mainActivityService.DeleteAsync(id);
-                return NoContent();
-            }
-            catch (KeyNotFoundException)
-            {
-                return NotFound(new { isSuccess = false, message = "Main activity not found" });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { isSuccess = false, message = ex.Message });
-            }
+            await _mainActivityService.DeleteAsync(id);
+            return NoContent();
         }
     }
 }

@@ -13,7 +13,7 @@ namespace TES_Learning_App.Application_Layer.Interfaces.IRepositories
         Task<User?> GetUserByIdentifierAsync(string identifier);
         ///Task<User?> GetUserByEmailAsync(string email);
         Task<bool> UserExistsAsync(string email);
-
+        Task<User?> GetUserByResetTokenAsync(string token);
         Task<IEnumerable<User>> FindUsersByRoleIdAsync(Guid roleId);
     }
 }

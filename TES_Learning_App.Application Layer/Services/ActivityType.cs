@@ -8,6 +8,7 @@ using TES_Learning_App.Application_Layer.DTOs.ActivityType.Response;
 using TES_Learning_App.Application_Layer.Interfaces.IRepositories;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Domain.Entities;
+using TES_Learning_App.Application_Layer.Exceptions;
 
 namespace TES_Learning_App.Application_Layer.Services
 {
@@ -51,12 +52,12 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task<ActivityTypeDto> CreateAsync(CreateActivityTypeDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Name_en))
-                throw new Exception("English name is required for ActivityType.");
+                throw new ValidationException("Name_en", new[] { "English name is required for ActivityType." });
 
             // Validate MainActivity exists
             var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(dto.MainActivityId);
             if (mainActivity == null)
-                throw new Exception($"MainActivity with ID {dto.MainActivityId} not found.");
+                throw new ValidationException("MainActivityId", new[] { $"MainActivity with ID {dto.MainActivityId} not found." });
 
             var activityType = new ActivityType
             {
@@ -76,7 +77,7 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task DeleteAsync(int id)
         {
             var activityType = await _unitOfWork.ActivityTypeRepository.GetByIdAsync(id);
-            if (activityType == null) throw new Exception("ActivityType not found.");
+            if (activityType == null) throw new KeyNotFoundException("ActivityType not found.");
 
             await _unitOfWork.ActivityTypeRepository.DeleteAsync(activityType);
             await _unitOfWork.CompleteAsync();
@@ -140,11 +141,15 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task UpdateAsync(int id, UpdateActivityTypeDto dto)
         {
             var activityType = await _unitOfWork.ActivityTypeRepository.GetByIdAsync(id);
-            if (activityType == null) throw new Exception("ActivityType not found.");
+            if (activityType == null) throw new KeyNotFoundException("ActivityType not found.");
 
-            activityType.Name_en = dto.Name_en;
-            activityType.Name_ta = dto.Name_ta;
-            activityType.Name_si = dto.Name_si;
+            // Only update properties that are provided (not null)
+            if (dto.Name_en != null)
+                activityType.Name_en = dto.Name_en;
+            if (dto.Name_ta != null)
+                activityType.Name_ta = dto.Name_ta;
+            if (dto.Name_si != null)
+                activityType.Name_si = dto.Name_si;
             if (dto.JsonMethod != null)
             {
                 activityType.JsonMethod = dto.JsonMethod;
@@ -156,7 +161,7 @@ namespace TES_Learning_App.Application_Layer.Services
                 // Validate MainActivity exists
                 var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(dto.MainActivityId.Value);
                 if (mainActivity == null)
-                    throw new Exception($"MainActivity with ID {dto.MainActivityId.Value} not found.");
+                    throw new ValidationException("MainActivityId", new[] { $"MainActivity with ID {dto.MainActivityId.Value} not found." });
                 
                 activityType.MainActivityId = dto.MainActivityId.Value;
             }

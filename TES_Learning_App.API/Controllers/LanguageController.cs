@@ -28,8 +28,7 @@ namespace TES_Learning_App.API.Controllers
         public async Task<ActionResult<LanguageDto>> GetById(int id)
         {
             var language = await _languageService.GetByIdAsync(id);
-            if (language == null) return NotFound();
-            return Ok(language);
+            return HandleGetById(language, "Language", id);
         }
 
         // POST: api/languages
@@ -45,7 +44,7 @@ namespace TES_Learning_App.API.Controllers
         public async Task<IActionResult> Update(int id, CreateLanguageDto dto)
         {
             await _languageService.UpdateAsync(id, dto);
-            return NoContent(); // Standard response for a successful update
+            return NoContent();
         }
 
         // DELETE: api/languages/5
@@ -53,7 +52,7 @@ namespace TES_Learning_App.API.Controllers
         public async Task<IActionResult> Delete(int id)
         {
             await _languageService.DeleteAsync(id);
-            return NoContent(); // Standard response for a successful delete
+            return NoContent();
         }
     }
 }

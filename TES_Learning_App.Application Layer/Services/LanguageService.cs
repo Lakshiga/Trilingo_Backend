@@ -8,6 +8,7 @@ using TES_Learning_App.Application_Layer.DTOs.Language.Response;
 using TES_Learning_App.Application_Layer.Interfaces.IRepositories;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Domain.Entities;
+using TES_Learning_App.Application_Layer.Exceptions;
 
 namespace TES_Learning_App.Application_Layer.Services
 {
@@ -23,7 +24,7 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task<LanguageDto> CreateAsync(CreateLanguageDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.LanguageName))
-                throw new Exception("Language Name is required.");
+                throw new ValidationException("LanguageName", new[] { "Language Name is required." });
 
             var language = new Language { LanguageName = dto.LanguageName };
 
@@ -36,7 +37,7 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task DeleteAsync(int id)
         {
             var language = await _unitOfWork.LanguageRepository.GetByIdAsync(id);
-            if (language == null) throw new Exception("Language not found.");
+            if (language == null) throw new KeyNotFoundException("Language not found.");
 
             await _unitOfWork.LanguageRepository.DeleteAsync(language);
             await _unitOfWork.CompleteAsync();
@@ -57,11 +58,11 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task UpdateAsync(int id, CreateLanguageDto dto)
         {
             var language = await _unitOfWork.LanguageRepository.GetByIdAsync(id);
-            if (language == null) throw new Exception("Language not found.");
+            if (language == null) throw new KeyNotFoundException("Language not found.");
 
             language.LanguageName = dto.LanguageName;
 
-            await _unitOfWork.LanguageRepository.DeleteAsync(language);
+            await _unitOfWork.LanguageRepository.UpdateAsync(language);
             await _unitOfWork.CompleteAsync();
         }
 

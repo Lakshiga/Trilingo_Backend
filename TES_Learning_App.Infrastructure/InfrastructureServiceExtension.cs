@@ -2,8 +2,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using TES_Learning_App.Application_Layer.Common;
 using TES_Learning_App.Application_Layer.Interfaces.Infrastructure;
 using TES_Learning_App.Application_Layer.Interfaces.IRepositories;
+using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Infrastructure.Data;
 using TES_Learning_App.Infrastructure.Repositories;
 using TES_Learning_App.Infrastructure.Services_external;
@@ -23,6 +25,7 @@ namespace TES_Learning_App.Infrastructure
 
             // 2. Register Repositories
             services.AddScoped<IAuthRepository, AuthRepository>();
+            services.AddScoped<IStudentProgressRepository, StudentProgressRepository>();
             // We register it as 'Scoped' so that a new Unit of Work is created for each HTTP request.
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             // 3. Register External Services
@@ -46,7 +49,10 @@ namespace TES_Learning_App.Infrastructure
                     return new AmazonS3Client(regionEndpoint);
                 }
             });
-            // Add other services here later (e.g., IEmailService)
+            
+            // Register Email Service
+            services.Configure<EmailSettings>(configuration.GetSection("EmailSettings"));
+            services.AddScoped<IEmailService, EmailService>();
 
             return services;
         }

@@ -26,8 +26,7 @@ namespace TES_Learning_App.API.Controllers
         public async Task<ActionResult<RoleDto>> GetById(Guid id)
         {
             var role = await _roleService.GetByIdAsync(id);
-            if (role == null) return NotFound();
-            return Ok(role);
+            return HandleGetById(role, "Role", id);
         }
 
         [HttpPost]

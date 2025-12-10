@@ -8,6 +8,7 @@ using TES_Learning_App.Application_Layer.DTOs.MainActivity.Response;
 using TES_Learning_App.Application_Layer.Interfaces.IRepositories;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Domain.Entities;
+using TES_Learning_App.Application_Layer.Exceptions;
 
 namespace TES_Learning_App.Application_Layer.Services
 {
@@ -23,7 +24,7 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task<MainActivityDto> CreateAsync(CreateMainActivityDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Name_en))
-                throw new Exception("English name is required for MainActivity.");
+                throw new ValidationException("Name_en", new[] { "English name is required for MainActivity." });
 
             var mainActivity = new MainActivity
             {
@@ -41,7 +42,7 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task DeleteAsync(int id)
         {
             var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(id);
-            if (mainActivity == null) throw new Exception("MainActivity not found.");
+            if (mainActivity == null) throw new KeyNotFoundException("MainActivity not found.");
 
             await _unitOfWork.MainActivityRepository.DeleteAsync(mainActivity);
             await _unitOfWork.CompleteAsync();
@@ -62,7 +63,7 @@ namespace TES_Learning_App.Application_Layer.Services
         public async Task UpdateAsync(int id, UpdateMainActivityDto dto)
         {
             var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(id);
-            if (mainActivity == null) throw new Exception("MainActivity not found.");
+            if (mainActivity == null) throw new KeyNotFoundException("MainActivity not found.");
 
             // Only update fields that are provided (not null)
             // This allows partial updates and prevents overwriting with null values

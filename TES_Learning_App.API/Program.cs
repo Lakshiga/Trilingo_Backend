@@ -1,16 +1,13 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders;
-using System.IO;
-using System.Linq;
 using TES_Learning_App.API.Extensions;
 using TES_Learning_App.API.Middleware;
 using TES_Learning_App.Application_Layer;
-using TES_Learning_App.Application_Layer.Common;
-using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Infrastructure;
 using TES_Learning_App.Infrastructure.Data;
 using TES_Learning_App.Infrastructure.Data.DbIntializers_Seeds;
-using TES_Learning_App.Infrastructure.Services_external;
+using Microsoft.Extensions.FileProviders;
+using System.IO;
+using System.Linq;
 
 
 namespace TES_Learning_App.API
@@ -24,10 +21,6 @@ namespace TES_Learning_App.API
             builder.WebHost.UseUrls("http://0.0.0.0:5166");
 
             builder.Services.AddInfrastructureServices(builder.Configuration);
-
-            builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
-
-            builder.Services.AddTransient<IEmailService, EmailService>();
 
             builder.Services.AddApplicationServices();
 
@@ -61,7 +54,11 @@ namespace TES_Learning_App.API
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(connectionString));
 
-            builder.Services.AddControllers()
+            builder.Services.AddControllers(options =>
+                {
+                    // Add global ModelState validation filter - eliminates need to check in every controller
+                    options.Filters.Add<TES_Learning_App.API.Filters.ModelStateValidationFilter>();
+                })
                 .AddJsonOptions(options =>
                 {
                     // Configure JSON to accept both camelCase and PascalCase
@@ -77,6 +74,9 @@ namespace TES_Learning_App.API
             builder.Services.AddSignalR();
 
             builder.Services.AddScoped<TES_Learning_App.API.Services.IRealtimeBroadcastService, TES_Learning_App.API.Services.RealtimeBroadcastService>();
+            
+            // Register centralized error response service
+            builder.Services.AddScoped<TES_Learning_App.API.Services.IErrorResponseService, TES_Learning_App.API.Services.ErrorResponseService>();
 
             builder.Services.AddCors(options =>
             {
