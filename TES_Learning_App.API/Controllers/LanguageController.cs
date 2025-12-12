@@ -25,7 +25,7 @@ namespace TES_Learning_App.API.Controllers
 
         // GET: api/languages/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<LanguageDto>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
             var language = await _languageService.GetByIdAsync(id);
             return HandleGetById(language, "Language", id);

@@ -15,7 +15,7 @@ namespace TES_Learning_App.API.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<StageDto>>> GetAll() => Ok(await _stageService.GetAllAsync());
         [HttpGet("{id}")]
-        public async Task<ActionResult<StageDto>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
             var stage = await _stageService.GetByIdAsync(id);
             return HandleGetById(stage, "Stage", id);

@@ -12,11 +12,9 @@ namespace TES_Learning_App.Infrastructure.Repositories
 {
     public class StudentRepository : GenericRepository<Student>, IStudentRepository
     {
-        private readonly ApplicationDbContext _context;
+        // Reuse the protected _context from GenericRepository; no new field needed
         public StudentRepository(ApplicationDbContext context) : base(context)
-        {
-            _context = context;
-        }
+        { }
 
         public async Task<IEnumerable<Student>> GetStudentsByParentIdAsync(Guid parentId)
         {

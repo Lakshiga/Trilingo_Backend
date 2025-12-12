@@ -26,7 +26,7 @@ namespace TES_Learning_App.API.Controllers
         // GET: api/mainactivities/{id} - Allow mobile app to access
         [HttpGet("{id}")]
         [AllowAnonymous]
-        public async Task<ActionResult<MainActivityDto>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
             var mainActivity = await _mainActivityService.GetByIdAsync(id);
             return HandleGetById(mainActivity, "MainActivity", id);

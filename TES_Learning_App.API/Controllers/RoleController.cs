@@ -23,7 +23,7 @@ namespace TES_Learning_App.API.Controllers
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<RoleDto>> GetById(Guid id)
+        public async Task<IActionResult> GetById(Guid id)
         {
             var role = await _roleService.GetByIdAsync(id);
             return HandleGetById(role, "Role", id);

@@ -27,7 +27,7 @@ namespace TES_Learning_App.API.Controllers
 
         // GET: api/levels/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<LevelDto>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
             var level = await _levelService.GetByIdAsync(id);
             return HandleGetById(level, "Level", id);

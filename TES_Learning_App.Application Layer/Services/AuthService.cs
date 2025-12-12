@@ -134,17 +134,38 @@ namespace TES_Learning_App.Application_Layer.Services
                 return new AuthResponseDto { IsSuccess = false, Message = string.Join(" ", validationErrors) };
             }
 
-            if (await _unitOfWork.AuthRepository.UserExistsAsync(dto.Email))
+            dto.Email = dto.Email.Trim();
+            dto.Username = dto.Username.Trim();
+            var normalizedEmail = dto.Email.ToLower();
+
+            // Prevent duplicates on either username or email to avoid DB unique constraint violations
+            if (await _unitOfWork.AuthRepository.UserExistsByUsernameAsync(dto.Username))
+            {
+                return new AuthResponseDto { IsSuccess = false, Message = "Username is already taken." };
+            }
+
+            if (await _unitOfWork.AuthRepository.UserExistsAsync(normalizedEmail))
             //if (await _authRepository.UserExistsAsync(dto.Email))
             {
                 return new AuthResponseDto { IsSuccess = false, Message = "Email is already taken." };
             }
-            var user = new User { Username = dto.Username, Email = dto.Email.ToLower() };
+            var user = new User { Username = dto.Username, Email = normalizedEmail };
 
-            var createdUser = await _unitOfWork.AuthRepository.RegisterAsync(user, dto.Password);
-            //var createdUser = await _authRepository.RegisterAsync(user, dto.Password);
-
-            await _unitOfWork.CompleteAsync();
+            User createdUser;
+            try
+            {
+                createdUser = await _unitOfWork.AuthRepository.RegisterAsync(user, dto.Password);
+                // Mark first-login flags as complete so immediate login does not fail
+                createdUser.IsFirstLogin = false;
+                createdUser.MustChangePassword = false;
+                await _unitOfWork.UserRepository.UpdateAsync(createdUser);
+                await _unitOfWork.CompleteAsync();
+            }
+            catch (Exception ex)
+            {
+                var detail = ex.InnerException?.Message ?? ex.Message;
+                return new AuthResponseDto { IsSuccess = false, Message = $"Registration failed: {detail}" };
+            }
 
             // We can log the user in immediately after they register
             var loginDto = new LoginDto

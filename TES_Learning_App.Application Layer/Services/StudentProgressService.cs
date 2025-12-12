@@ -35,16 +35,22 @@ namespace TES_Learning_App.Application_Layer.Services
                 throw new KeyNotFoundException("Activity not found.");
             }
 
+            // Enforce “first attempt wins” – once a score is recorded for a student+activity, it cannot be changed
+            var existing = await _unitOfWork.StudentProgressRepository
+                .GetLatestByStudentAndActivityAsync(dto.StudentId, dto.ActivityId);
+            if (existing != null)
+            {
+                throw new ValidationException("Score", new[]
+                {
+                    "A score is already recorded for this exercise. It cannot be changed or overwritten."
+                });
+            }
+
             // Validate score
             if (dto.Score < 0 || dto.Score > dto.MaxScore)
             {
                 throw new ValidationException("Score", new[] { $"Score must be between 0 and {dto.MaxScore}." });
             }
-
-            // Get latest attempt number
-            var latestProgress = await _unitOfWork.StudentProgressRepository
-                .GetLatestByStudentAndActivityAsync(dto.StudentId, dto.ActivityId);
-            var attemptNumber = latestProgress != null ? latestProgress.AttemptNumber + 1 : 1;
 
             var progress = new StudentProgress
             {
@@ -53,7 +59,7 @@ namespace TES_Learning_App.Application_Layer.Services
                 Score = dto.Score,
                 MaxScore = dto.MaxScore,
                 TimeSpentSeconds = dto.TimeSpentSeconds,
-                AttemptNumber = attemptNumber,
+                AttemptNumber = 1, // first attempt is the only attempt we persist
                 IsCompleted = dto.IsCompleted,
                 Notes = dto.Notes,
                 CompletedAt = DateTime.UtcNow
@@ -323,25 +329,18 @@ namespace TES_Learning_App.Application_Layer.Services
                 }
             }
 
-            // Update only provided fields
-            if (dto.Score.HasValue)
+            // Score for a student+exercise is immutable after first attempt
+            if (dto.Score.HasValue || dto.MaxScore.HasValue || dto.AttemptNumber.HasValue)
             {
-                var maxScore = dto.MaxScore ?? progress.MaxScore;
-                if (dto.Score.Value < 0 || dto.Score.Value > maxScore)
+                throw new ValidationException("Score", new[]
                 {
-                    throw new ValidationException("Score", new[] { $"Score must be between 0 and {maxScore}." });
-                }
-                progress.Score = dto.Score.Value;
+                    "Score/attempt are locked after the first attempt. CreateProgress records the only allowed score."
+                });
             }
 
-            if (dto.MaxScore.HasValue)
-                progress.MaxScore = dto.MaxScore.Value;
-
+            // Update only provided mutable fields
             if (dto.TimeSpentSeconds.HasValue)
                 progress.TimeSpentSeconds = dto.TimeSpentSeconds.Value;
-
-            if (dto.AttemptNumber.HasValue)
-                progress.AttemptNumber = dto.AttemptNumber.Value;
 
             if (dto.IsCompleted.HasValue)
                 progress.IsCompleted = dto.IsCompleted.Value;
@@ -384,13 +383,13 @@ namespace TES_Learning_App.Application_Layer.Services
             return student != null && !student.IsDeleted && student.ParentId == parentUserId;
         }
 
-        private async Task<ProgressDto> MapToProgressDtoAsync(StudentProgress progress)
+        private Task<ProgressDto> MapToProgressDtoAsync(StudentProgress progress)
         {
             var percentageScore = progress.MaxScore > 0
                 ? Math.Round((double)progress.Score / progress.MaxScore * 100, 2)
                 : 0;
 
-            return new ProgressDto
+            return Task.FromResult(new ProgressDto
             {
                 Id = progress.Id,
                 StudentId = progress.StudentId,
@@ -414,7 +413,7 @@ namespace TES_Learning_App.Application_Layer.Services
                 AttemptNumber = progress.AttemptNumber,
                 IsCompleted = progress.IsCompleted,
                 Notes = progress.Notes
-            };
+            });
         }
 
         private string FormatTime(int seconds)

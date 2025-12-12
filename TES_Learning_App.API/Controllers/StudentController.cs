@@ -39,7 +39,7 @@ namespace TES_Learning_App.API.Controllers
         }
 
         [HttpGet("{studentId}")] // GET api/students/{guid}
-        public async Task<ActionResult<StudentDto>> GetStudentById(Guid studentId)
+        public async Task<IActionResult> GetStudentById(Guid studentId)
         {
             var parentId = GetParentId();
             var student = await _studentService.GetStudentByIdAsync(studentId, parentId);

@@ -32,7 +32,7 @@ namespace TES_Learning_App.API.Controllers
         /// Get admin by ID (SuperAdmin only)
         /// </summary>
         [HttpGet("{adminId}")]
-        public async Task<ActionResult<AdminDto>> GetAdminById(Guid adminId)
+        public async Task<IActionResult> GetAdminById(Guid adminId)
         {
             var admin = await _adminService.GetAdminByIdAsync(adminId);
             return HandleGetById(admin, "Admin", adminId);

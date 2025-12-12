@@ -31,7 +31,7 @@ namespace TES_Learning_App.API.Controllers
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<ActivityTypeDto>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
             var activityType = await _activityTypeService.GetByIdAsync(id);
             return HandleGetById(activityType, "ActivityType", id);

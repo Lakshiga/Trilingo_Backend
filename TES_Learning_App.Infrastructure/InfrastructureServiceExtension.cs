@@ -51,7 +51,12 @@ namespace TES_Learning_App.Infrastructure
             });
             
             // Register Email Service
-            services.Configure<EmailSettings>(configuration.GetSection("EmailSettings"));
+            services.Configure<EmailSettings>(options =>
+            {
+                options.SenderName = configuration["EmailSettings:SenderName"] ?? string.Empty;
+                options.SenderEmail = configuration["EmailSettings:SenderEmail"] ?? string.Empty;
+                options.SendGridApiKey = configuration["EmailSettings:SendGridApiKey"] ?? string.Empty;
+            });
             services.AddScoped<IEmailService, EmailService>();
 
             return services;

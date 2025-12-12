@@ -36,7 +36,18 @@ namespace TES_Learning_App.Infrastructure.Repositories
             user.PasswordHash = passwordHash;
             user.PasswordSalt = passwordSalt;
             var parentRole = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == "Parent");
-            if (parentRole == null) throw new InvalidOperationException("'Parent' role not found.");
+            if (parentRole == null)
+            {
+                parentRole = new Role
+                {
+                    Id = Guid.NewGuid(),
+                    RoleName = "Parent"
+                };
+                await _context.Roles.AddAsync(parentRole);
+                // Save immediately so RoleId is available and unique constraint (if any) is satisfied
+                await _context.SaveChangesAsync();
+            }
+            user.RoleId = parentRole.Id;
             user.Role = parentRole;
             await _context.Users.AddAsync(user);
             await _context.SaveChangesAsync();
@@ -46,6 +57,11 @@ namespace TES_Learning_App.Infrastructure.Repositories
         public async Task<bool> UserExistsAsync(string email)
         {
             return await _context.Users.AnyAsync(u => u.Email.ToLower() == email.ToLower());
+        }
+
+        public async Task<bool> UserExistsByUsernameAsync(string username)
+        {
+            return await _context.Users.AnyAsync(u => u.Username.ToLower() == username.ToLower());
         }
 
         private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)

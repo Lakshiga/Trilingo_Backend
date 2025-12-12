@@ -38,7 +38,7 @@ namespace TES_Learning_App.API.Controllers
         // GET: api/activities/5 - Allow all authenticated users
         [HttpGet("{id}")]
         [AllowAnonymous] // Allow unauthenticated access for mobile app
-        public async Task<ActionResult<ActivityDto>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
             var activity = await _activityService.GetByIdAsync(id);
             return HandleGetById(activity, "Activity", id);

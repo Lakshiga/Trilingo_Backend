@@ -7,8 +7,8 @@ namespace TES_Learning_App.Application_Layer.DTOs.Progress.Response
         public int TotalCompleted { get; set; }
         public int TotalAttempted { get; set; }
         public double AverageScore { get; set; }
-        public int BestScore { get; set; }
-        public int WorstScore { get; set; }
+        public double BestScore { get; set; }
+        public double WorstScore { get; set; }
         public int TotalXpPoints { get; set; }
         public int TotalTimeSpentSeconds { get; set; }
         public Dictionary<string, int> ActivitiesByStage { get; set; } = new();

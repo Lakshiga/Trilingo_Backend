@@ -38,7 +38,7 @@ namespace TES_Learning_App.API.Controllers
         // GET: api/exercises/5 - Allow mobile app to access
         [HttpGet("{id}")]
         [AllowAnonymous]
-        public async Task<ActionResult<ExerciseDto>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
             var exercise = await _exerciseService.GetByIdAsync(id);
             return HandleGetById(exercise, "Exercise", id);
