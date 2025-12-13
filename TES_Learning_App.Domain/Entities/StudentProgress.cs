@@ -27,5 +27,10 @@ namespace TES_Learning_App.Domain.Entities
         public int ActivityId { get; set; }
         // Navigation Property
         public Activity Activity { get; set; } = null!;
+        
+        // Foreign Key to Exercise (optional, for more granular tracking)
+        public int? ExerciseId { get; set; }
+        // Navigation Property
+        public Exercise? Exercise { get; set; }
     }
 }
