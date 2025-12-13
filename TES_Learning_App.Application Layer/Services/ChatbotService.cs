@@ -163,9 +163,34 @@ Instructions:
                                 var modelName = name.GetString();
                                 if (!string.IsNullOrEmpty(modelName))
                                 {
-                                    // Extract just the model name (remove "models/" prefix if present)
-                                    var cleanName = modelName.Replace("models/", "");
-                                    models.Add(cleanName);
+                                    // Skip embedding models - they don't support generateContent
+                                    if (modelName.Contains("embedding", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        continue;
+                                    }
+                                    
+                                    // Check if model supports generateContent method
+                                    bool supportsGenerateContent = false;
+                                    if (model.TryGetProperty("supportedGenerationMethods", out var methods))
+                                    {
+                                        foreach (var method in methods.EnumerateArray())
+                                        {
+                                            var methodStr = method.GetString();
+                                            if (methodStr == "generateContent")
+                                            {
+                                                supportsGenerateContent = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Only add models that support generateContent or are known Gemini models
+                                    if (supportsGenerateContent || modelName.Contains("gemini", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        // Extract just the model name (remove "models/" prefix if present)
+                                        var cleanName = modelName.Replace("models/", "");
+                                        models.Add(cleanName);
+                                    }
                                 }
                             }
                         }
@@ -173,7 +198,7 @@ Instructions:
                     
                     if (models.Count > 0)
                     {
-                        _logger.LogInformation("Found {Count} available models: {Models}", models.Count, string.Join(", ", models));
+                        _logger.LogInformation("Found {Count} available generative models: {Models}", models.Count, string.Join(", ", models));
                         return models;
                     }
                 }
@@ -249,10 +274,17 @@ Instructions:
                 
                 if (availableModels != null && availableModels.Count > 0)
                 {
-                    // Use models that are actually available
+                    // Use models that are actually available and filter out embedding models
                     foreach (var model in availableModels)
                     {
-                        if (model.Contains("gemini"))
+                        // Skip embedding models explicitly
+                        if (model.Contains("embedding", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+                        
+                        // Only add Gemini generative models
+                        if (model.Contains("gemini", StringComparison.OrdinalIgnoreCase))
                         {
                             modelCandidates.Add(("v1beta", model));
                         }

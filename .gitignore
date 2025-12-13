@@ -361,3 +361,12 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Environment variables file (contains sensitive keys)
+.env
+.env.local
+.env.*.local
+
+# API Keys and Secrets (Development only)
+# Note: appsettings.Development.json may contain sensitive keys - be careful when committing
+# Consider using User Secrets for local development: dotnet user-secrets set "GoogleAI:ApiKey" "YOUR_KEY"

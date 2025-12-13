@@ -7,6 +7,7 @@ using TES_Learning_App.Infrastructure.Data.DbIntializers_Seeds;
 using Microsoft.Extensions.FileProviders;
 using System.IO;
 using System.Linq;
+using DotNetEnv;
 
 
 namespace TES_Learning_App.API
@@ -16,8 +17,73 @@ namespace TES_Learning_App.API
     {
         public static void Main(string[] args)
         {
+            // Load .env file before building the application
+            // Try multiple paths to find .env file
+            var possibleEnvPaths = new[]
+            {
+                Path.Combine(Directory.GetCurrentDirectory(), ".env"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".env"),
+                Path.Combine(AppContext.BaseDirectory, ".env"),
+                Path.Combine(Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory)?.FullName ?? "", ".env")
+            };
+            
+            string? envPath = null;
+            foreach (var path in possibleEnvPaths)
+            {
+                if (File.Exists(path))
+                {
+                    envPath = path;
+                    break;
+                }
+            }
+            
+            if (envPath != null)
+            {
+                Env.Load(envPath);
+                Console.WriteLine($"[.env] Loaded environment variables from: {envPath}");
+            }
+            else
+            {
+                Console.WriteLine("[.env] Warning: .env file not found. Using default configuration.");
+            }
+            
             var builder = WebApplication.CreateBuilder(args);
             builder.WebHost.UseUrls("http://0.0.0.0:5166");
+
+            // Map environment variables from .env to configuration
+            var googleApiKey = Environment.GetEnvironmentVariable("GOOGLEAI_APIKEY");
+            var stripePublishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLEKEY");
+            var stripeSecretKey = Environment.GetEnvironmentVariable("STRIPE_SECRETKEY");
+            
+            if (!string.IsNullOrEmpty(googleApiKey))
+            {
+                builder.Configuration["GoogleAI:ApiKey"] = googleApiKey;
+                Console.WriteLine("[.env] GoogleAI API key loaded from environment variable");
+            }
+            else
+            {
+                Console.WriteLine("[.env] Warning: GOOGLEAI_APIKEY not found in environment variables");
+            }
+            
+            if (!string.IsNullOrEmpty(stripePublishableKey))
+            {
+                builder.Configuration["Stripe:PublishableKey"] = stripePublishableKey;
+                Console.WriteLine("[.env] Stripe PublishableKey loaded from environment variable");
+            }
+            else
+            {
+                Console.WriteLine("[.env] Warning: STRIPE_PUBLISHABLEKEY not found in environment variables");
+            }
+            
+            if (!string.IsNullOrEmpty(stripeSecretKey))
+            {
+                builder.Configuration["Stripe:SecretKey"] = stripeSecretKey;
+                Console.WriteLine("[.env] Stripe SecretKey loaded from environment variable");
+            }
+            else
+            {
+                Console.WriteLine("[.env] Warning: STRIPE_SECRETKEY not found in environment variables");
+            }
 
             // Add ContentRootPath and Environment to configuration for S3Service
             builder.Configuration["ContentRootPath"] = builder.Environment.ContentRootPath;
