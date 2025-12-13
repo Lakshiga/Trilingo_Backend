@@ -21,8 +21,8 @@ namespace TES_Learning_App.Application_Layer
             services.AddScoped<IExerciseService, ExerciseService>();
             services.AddScoped<IRoleService, RoleService>();
             services.AddScoped<IStudentProgressService, StudentProgressService>();
-            services.AddScoped<IPaymentService, PaymentService>();
-            // Add other services here later (e.g., IStudentService)
+            services.AddScoped<IChatbotService, ChatbotService>();
+            services.AddScoped<IPaymentService, PaymentService>();            // Add other services here later (e.g., IStudentService)
 
             // 2. Register AutoMapper (we will add this later)
             // services.AddAutoMapper(Assembly.GetExecutingAssembly());
