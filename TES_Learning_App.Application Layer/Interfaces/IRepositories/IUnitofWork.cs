@@ -29,6 +29,9 @@ namespace TES_Learning_App.Application_Layer.Interfaces.IRepositories
         // Bridge Repository
         IGenericRepository<StudentProgress> StudentProgressRepository { get; } // <-- ADD THIS
 
+        // Payment Repository
+        IGenericRepository<LevelPurchase> LevelPurchaseRepository { get; }
+
         // The transactional save method
         Task<int> CompleteAsync();
     }

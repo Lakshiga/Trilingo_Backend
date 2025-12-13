@@ -21,6 +21,7 @@ namespace TES_Learning_App.Infrastructure.Repositories
         public IActivityRepository ActivityRepository { get; private set; }
         public IGenericRepository<Exercise> ExerciseRepository { get; private set; }
         public IGenericRepository<StudentProgress> StudentProgressRepository { get; private set; }
+        public IGenericRepository<LevelPurchase> LevelPurchaseRepository { get; private set; }
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -38,6 +39,7 @@ namespace TES_Learning_App.Infrastructure.Repositories
             ActivityRepository = new ActivityRepository(_context);
             ExerciseRepository = new GenericRepository<Exercise>(_context);
             StudentProgressRepository = new GenericRepository<StudentProgress>(_context);
+            LevelPurchaseRepository = new GenericRepository<LevelPurchase>(_context);
         }
 
         public async Task<int> CompleteAsync() => await _context.SaveChangesAsync();
