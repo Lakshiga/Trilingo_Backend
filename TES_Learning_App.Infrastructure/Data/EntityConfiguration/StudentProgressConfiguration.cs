@@ -30,7 +30,13 @@ namespace TES_Learning_App.Infrastructure.Data.EntityConfiguration
             builder.HasOne(sp => sp.Activity)
                    .WithMany() // No corresponding collection on Activity
                    .HasForeignKey(sp => sp.ActivityId)
-                   .OnDelete(DeleteBehavior.Cascade); 
+                   .OnDelete(DeleteBehavior.Cascade);
+                   
+            // Relationship to Exercise (optional)
+            builder.HasOne(sp => sp.Exercise)
+                   .WithMany() // No corresponding collection on Exercise
+                   .HasForeignKey(sp => sp.ExerciseId)
+                   .OnDelete(DeleteBehavior.Restrict); // Use Restrict to avoid multiple cascade paths
         }
     }
 }

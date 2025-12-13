@@ -3,7 +3,6 @@ using System.Reflection;
 using TES_Learning_App.Application_Layer.Interfaces.IRepositories;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
 using TES_Learning_App.Application_Layer.Services;
-
 namespace TES_Learning_App.Application_Layer
 {
     public static class ApplicationServiceExtension
@@ -21,6 +20,7 @@ namespace TES_Learning_App.Application_Layer
             services.AddScoped<IActivityService, ActivityService>();
             services.AddScoped<IExerciseService, ExerciseService>();
             services.AddScoped<IRoleService, RoleService>();
+            services.AddScoped<IStudentProgressService, StudentProgressService>();
             // Add other services here later (e.g., IStudentService)
 
             // 2. Register AutoMapper (we will add this later)
