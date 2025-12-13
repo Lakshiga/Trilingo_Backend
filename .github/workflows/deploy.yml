@@ -1,0 +1,270 @@
+name: Deploy .NET Backend to AWS EC2
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Detect backend directory
+        id: backend-dir
+        run: |
+          if [ -d "Trilingo_Learning_App_Backend" ]; then
+            echo "BACKEND_DIR=Trilingo_Learning_App_Backend" >> $GITHUB_OUTPUT
+          elif [ -f "TES_Learning_App.API/TES_Learning_App.API.csproj" ]; then
+            echo "BACKEND_DIR=." >> $GITHUB_OUTPUT
+          else
+            echo "❌ Backend directory not found!"
+            exit 1
+          fi
+      - name: Restore dependencies
+        run: dotnet restore
+        working-directory: ${{ steps.backend-dir.outputs.BACKEND_DIR }}
+
+      - name: Build application
+        run: dotnet build --configuration Release --no-restore
+        working-directory: ${{ steps.backend-dir.outputs.BACKEND_DIR }}
+
+      - name: Publish application
+        run: dotnet publish TES_Learning_App.API/TES_Learning_App.API.csproj --configuration Release --output ./TES_Learning_App.API/publish --no-build
+        working-directory: ${{ steps.backend-dir.outputs.BACKEND_DIR }}
+
+      # ---------------------------------------------------------
+      # FIX APPLIED: Changed Type=notify to Type=simple
+      # This prevents the "Core Dump" / Timeout error.
+      # ---------------------------------------------------------
+      - name: Create Systemd Service File
+        run: |
+          cat <<EOF > trilingo-backend.service
+          [Unit]
+          Description=Trilingo Learning App Backend API
+          After=network.target
+          [Service]
+          Type=simple
+          User=${{ secrets.EC2_USER }}
+          WorkingDirectory=/var/www/trilingo-backend
+          ExecStart=/usr/bin/dotnet /var/www/trilingo-backend/TES_Learning_App.API.dll
+          Restart=always
+          RestartSec=10
+          KillSignal=SIGINT
+          SyslogIdentifier=trilingo-backend
+          Environment=ASPNETCORE_ENVIRONMENT=Production
+          Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+          Environment="ConnectionStrings__DefaultConnection=${{ secrets.DB_CONNECTION_STRING }}"
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+      - name: Create deployment package
+        run: |
+          PUBLISH_DIR="${{ steps.backend-dir.outputs.BACKEND_DIR }}/TES_Learning_App.API/publish"
+          PACKAGE_NAME="deployment-package.zip"
+          echo "Creating zip package from $PUBLISH_DIR"
+          cd "$PUBLISH_DIR"
+          zip -r "${GITHUB_WORKSPACE}/${PACKAGE_NAME}" .
+          cd "${GITHUB_WORKSPACE}"
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          # Write SSH key - use a method that preserves the key exactly
+          # Store secret in a variable first to avoid any shell interpretation
+          KEY_CONTENT="${{ secrets.EC2_SSH_PRIVATE_KEY }}"
+          echo "$KEY_CONTENT" > ~/.ssh/id_rsa
+          
+          # Fix Windows line endings and remove trailing whitespace
+          sed -i 's/\r$//' ~/.ssh/id_rsa
+          # Remove trailing blank lines
+          sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' ~/.ssh/id_rsa
+          
+          chmod 600 ~/.ssh/id_rsa
+          
+          # Verify key file exists and has content
+          if [ ! -f ~/.ssh/id_rsa ] || [ ! -s ~/.ssh/id_rsa ]; then
+            echo "❌ Error: SSH key file is empty or missing"
+            echo ""
+            echo "📋 Your EC2_SSH_PRIVATE_KEY secret might be empty."
+            echo "   Please check GitHub Secrets and add the key content."
+            exit 1
+          fi
+          
+          # Show first and last line to verify format (without exposing key)
+          echo "🔍 Key file info:"
+          echo "   First line: $(head -n 1 ~/.ssh/id_rsa)"
+          echo "   Last line: $(tail -n 1 ~/.ssh/id_rsa)"
+          echo "   Total lines: $(wc -l < ~/.ssh/id_rsa)"
+          
+          # Add host to known_hosts
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>&1 || true
+          echo "✅ SSH configuration completed"
+
+      - name: Copy files to EC2
+        run: |
+          echo "📦 Copying deployment files to EC2..."
+          MAX_RETRIES=3
+          RETRY_DELAY=10
+          
+          # Function to copy file with retry
+          copy_with_retry() {
+            local file=$1
+            local dest=$2
+            local attempt=1
+            
+            while [ $attempt -le $MAX_RETRIES ]; do
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "Copying $file (attempt $attempt of $MAX_RETRIES)..."
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              
+              SCP_OUTPUT=$(scp -i ~/.ssh/id_rsa \
+                     -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=30 \
+                     -o ServerAliveInterval=10 \
+                     -o ServerAliveCountMax=3 \
+                     -o UserKnownHostsFile=~/.ssh/known_hosts \
+                     "$file" "$dest" 2>&1)
+              SCP_EXIT=$?
+              
+              if [ $SCP_EXIT -eq 0 ]; then
+                echo ""
+                echo "✅ Successfully copied $file"
+                return 0
+              else
+                echo ""
+                echo "❌ Copy attempt $attempt failed"
+                echo "Error output: $SCP_OUTPUT"
+                
+                # Check for specific SSH key errors
+                if echo "$SCP_OUTPUT" | grep -q "error in libcrypto\|Load key.*error\|Permission denied.*publickey"; then
+                  echo ""
+                  echo "🔴 SSH KEY FORMAT ERROR DETECTED!"
+                  echo ""
+                  echo "📋 EXACT STEPS TO FIX:"
+                  echo ""
+                  echo "1. Open: C:\\Users\\ASUS\\Downloads\\backend-key.pem"
+                  echo ""
+                  echo "2. In Notepad, press Ctrl+A (select all)"
+                  echo ""
+                  echo "3. Press Ctrl+C (copy)"
+                  echo ""
+                  echo "4. Go to: https://github.com/Lakshiga/Trilingo_Backend/settings/secrets/actions"
+                  echo ""
+                  echo "5. Click ✏️ (pencil) next to EC2_SSH_PRIVATE_KEY"
+                  echo ""
+                  echo "6. DELETE everything in the text box"
+                  echo ""
+                  echo "7. Press Ctrl+V (paste the key)"
+                  echo ""
+                  echo "8. Verify it starts with: -----BEGIN"
+                  echo "9. Verify it ends with: -----END"
+                  echo ""
+                  echo "10. Click 'Update secret'"
+                  echo ""
+                  echo "11. Re-run this workflow"
+                  echo ""
+                fi
+                
+                if [ $attempt -lt $MAX_RETRIES ]; then
+                  echo "⏳ Retrying in $RETRY_DELAY seconds..."
+                  sleep $RETRY_DELAY
+                  attempt=$((attempt + 1))
+                else
+                  echo ""
+                  echo "❌ Failed to copy $file after $MAX_RETRIES attempts"
+                  return 1
+                fi
+              fi
+            done
+          }
+          
+          # Copy deployment package
+          if ! copy_with_retry "deployment-package.zip" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
+            echo ""
+            echo "❌ Deployment aborted: Cannot copy deployment package"
+            exit 1
+          fi
+          
+          # Copy service file
+          if ! copy_with_retry "trilingo-backend.service" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/tmp/"; then
+            echo ""
+            echo "❌ Deployment aborted: Cannot copy service file"
+            exit 1
+          fi
+          
+          echo ""
+          echo "✅ All files copied successfully!"
+      - name: Deploy to EC2
+        run: |
+          echo "🚀 Starting deployment to EC2..."
+          ssh -i ~/.ssh/id_rsa \
+                     -o StrictHostKeyChecking=no \
+                     -o ConnectTimeout=30 \
+                     -o ServerAliveInterval=10 \
+                     -o ServerAliveCountMax=3 \
+                     -o UserKnownHostsFile=~/.ssh/known_hosts \
+                     -o BatchMode=yes \
+              ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
+              "set -e && \
+               APP_DIR=\"/var/www/trilingo-backend\" && \
+               BACKUP_DIR=\"/var/www/trilingo-backend-backup\" && \
+               SERVICE_NAME=\"trilingo-backend\" && \
+               EC2_USER=\"${{ secrets.EC2_USER }}\" && \
+               echo \"🚀 Starting deployment...\" && \
+               sudo mkdir -p \$APP_DIR && \
+               sudo mkdir -p \$BACKUP_DIR && \
+               if sudo systemctl is-active --quiet \$SERVICE_NAME; then \
+                 echo \"⏸️  Stopping service...\" && \
+                 sudo systemctl stop \$SERVICE_NAME || true; \
+               fi && \
+               if [ -d \"\$APP_DIR\" ] && [ \"\$(ls -A \$APP_DIR)\" ]; then \
+                 echo \"💾 Creating backup...\" && \
+                 sudo cp -r \$APP_DIR/* \$BACKUP_DIR/\$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true; \
+               fi && \
+               echo \"📦 Extracting package...\" && \
+               TEMP_DIR=\$(mktemp -d) && \
+               sudo unzip -q /tmp/deployment-package.zip -d \$TEMP_DIR && \
+               if [ -d \"\$APP_DIR/wwwroot\" ]; then \
+                 echo \"  - Preserving wwwroot...\" && \
+                 sudo mkdir -p \$TEMP_DIR/wwwroot && \
+                 sudo cp -r \$APP_DIR/wwwroot/* \$TEMP_DIR/wwwroot/ 2>/dev/null || true; \
+               fi && \
+               echo \"🧹 Updating files...\" && \
+               sudo rm -rf \$APP_DIR/* && \
+               sudo cp -r \$TEMP_DIR/* \$APP_DIR/ && \
+               echo \"📝 Updating Systemd Service...\" && \
+               sudo mv /tmp/trilingo-backend.service /etc/systemd/system/\$SERVICE_NAME.service && \
+               echo \"🔐 Setting permissions...\" && \
+               sudo chown -R \$EC2_USER:\$EC2_USER \$APP_DIR && \
+               sudo chmod +x \$APP_DIR/TES_Learning_App.API.dll || true && \
+               echo \"🔄 Restarting service...\" && \
+               sudo systemctl daemon-reload && \
+               sudo systemctl enable \$SERVICE_NAME && \
+               sudo systemctl start \$SERVICE_NAME && \
+               sudo rm -rf \$TEMP_DIR && \
+               sudo rm -f /tmp/deployment-package.zip && \
+               echo \"⏳ Waiting for service to initialize...\" && \
+               sleep 5 && \
+               if sudo systemctl is-active --quiet \$SERVICE_NAME; then \
+                 echo \"✅ Service started successfully!\" && \
+                 sudo systemctl status \$SERVICE_NAME --no-pager -l; \
+               else \
+                 echo \"❌ Service failed to start. Showing logs:\" && \
+                 sudo journalctl -u \$SERVICE_NAME --no-pager -n 50 && \
+                 exit 1; \
+               fi"
+      
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_rsa

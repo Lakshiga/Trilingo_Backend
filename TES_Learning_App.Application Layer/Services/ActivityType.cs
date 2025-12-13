@@ -1,0 +1,191 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using TES_Learning_App.Application_Layer.DTOs.ActivityType.Requests;
+using TES_Learning_App.Application_Layer.DTOs.ActivityType.Response;
+using TES_Learning_App.Application_Layer.Interfaces.IRepositories;
+using TES_Learning_App.Application_Layer.Interfaces.IServices;
+using TES_Learning_App.Domain.Entities;
+
+namespace TES_Learning_App.Application_Layer.Services
+{
+    public class ActivityTypeService : IActivityTypeService
+    {
+        private readonly IUnitOfWork _unitOfWork;
+        private static readonly IReadOnlyDictionary<string, string[]> MainActivityActivityTypeMap =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Learning"] = new[] { "Flash Card" },
+                ["Practice"] = new[]
+                {
+                    "Matching",
+                    "Fill in the blanks",
+                    "MCQ Activity",
+                    "True / False",
+                    "Scrumble Activity",
+                    "Memory Pair Activity"
+                },
+                ["Listening"] = new[]
+                {
+                    "Song Player",
+                    "Story Player",
+                    "Pronunciation Activity"
+                },
+                ["Games"] = new[]
+                {
+                    "Triple Blast Activity",
+                    "Bubble Blast Activity",
+                    "Group Sorter Activity"
+                },
+                ["Videos"] = Array.Empty<string>(),
+                ["Conversations"] = Array.Empty<string>()
+            };
+
+        public ActivityTypeService(IUnitOfWork unitOfWork)
+        {
+            _unitOfWork = unitOfWork;
+        }
+
+        public async Task<ActivityTypeDto> CreateAsync(CreateActivityTypeDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Name_en))
+                throw new Exception("English name is required for ActivityType.");
+
+            // Validate MainActivity exists
+            var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(dto.MainActivityId);
+            if (mainActivity == null)
+                throw new Exception($"MainActivity with ID {dto.MainActivityId} not found.");
+
+            var activityType = new ActivityType
+            {
+                Name_en = dto.Name_en,
+                Name_ta = dto.Name_ta,
+                Name_si = dto.Name_si,
+                JsonMethod = dto.JsonMethod,
+                MainActivityId = dto.MainActivityId
+            };
+
+            await _unitOfWork.ActivityTypeRepository.AddAsync(activityType);
+            await _unitOfWork.CompleteAsync();
+
+            return MapToDto(activityType);
+        }
+
+        public async Task DeleteAsync(int id)
+        {
+            var activityType = await _unitOfWork.ActivityTypeRepository.GetByIdAsync(id);
+            if (activityType == null) throw new Exception("ActivityType not found.");
+
+            await _unitOfWork.ActivityTypeRepository.DeleteAsync(activityType);
+            await _unitOfWork.CompleteAsync();
+        }
+
+        public async Task<IEnumerable<ActivityTypeDto>> GetAllAsync()
+        {
+            var activityTypes = await _unitOfWork.ActivityTypeRepository.GetAllAsync();
+            return activityTypes.Select(MapToDto);
+        }
+
+        public async Task<IEnumerable<ActivityTypeDto>> GetByMainActivityAsync(int mainActivityId)
+        {
+            var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(mainActivityId);
+            if (mainActivity == null)
+            {
+                return Enumerable.Empty<ActivityTypeDto>();
+            }
+
+            // Use direct relationship - get ActivityTypes by MainActivityId
+            var allTypes = await _unitOfWork.ActivityTypeRepository.GetAllAsync();
+            var filteredTypes = allTypes
+                .Where(type => type.MainActivityId == mainActivityId)
+                .Select(MapToDto)
+                .ToList();
+
+            // If no types found with direct relationship, try fallback to old mapping for backward compatibility
+            // This helps during transition period when some ActivityTypes might not have MainActivityId set
+            if (filteredTypes.Count == 0)
+            {
+                var mainActivityKey = NormalizeName(mainActivity.Name_en)
+                                      ?? NormalizeName(mainActivity.Name_ta)
+                                      ?? NormalizeName(mainActivity.Name_si);
+
+                if (!string.IsNullOrWhiteSpace(mainActivityKey) && 
+                    MainActivityActivityTypeMap.TryGetValue(mainActivityKey, out var allowedTypeNames) &&
+                    allowedTypeNames.Length > 0)
+                {
+                    var allowedNamesSet = new HashSet<string>(
+                        allowedTypeNames
+                            .Where(name => !string.IsNullOrWhiteSpace(name))
+                            .Select(name => name.Trim()),
+                        StringComparer.OrdinalIgnoreCase);
+
+                    filteredTypes = allTypes
+                        .Where(type => allowedNamesSet.Contains(NormalizeName(type.Name_en) ?? string.Empty))
+                        .Select(MapToDto)
+                        .ToList();
+                }
+            }
+
+            return filteredTypes;
+        }
+
+        public async Task<ActivityTypeDto?> GetByIdAsync(int id)
+        {
+            var activityType = await _unitOfWork.ActivityTypeRepository.GetByIdAsync(id);
+            return activityType == null ? null : MapToDto(activityType);
+        }
+
+        public async Task UpdateAsync(int id, UpdateActivityTypeDto dto)
+        {
+            var activityType = await _unitOfWork.ActivityTypeRepository.GetByIdAsync(id);
+            if (activityType == null) throw new Exception("ActivityType not found.");
+
+            activityType.Name_en = dto.Name_en;
+            activityType.Name_ta = dto.Name_ta;
+            activityType.Name_si = dto.Name_si;
+            if (dto.JsonMethod != null)
+            {
+                activityType.JsonMethod = dto.JsonMethod;
+            }
+            
+            // Update MainActivityId if provided
+            if (dto.MainActivityId.HasValue)
+            {
+                // Validate MainActivity exists
+                var mainActivity = await _unitOfWork.MainActivityRepository.GetByIdAsync(dto.MainActivityId.Value);
+                if (mainActivity == null)
+                    throw new Exception($"MainActivity with ID {dto.MainActivityId.Value} not found.");
+                
+                activityType.MainActivityId = dto.MainActivityId.Value;
+            }
+
+            await _unitOfWork.ActivityTypeRepository.UpdateAsync(activityType);
+            await _unitOfWork.CompleteAsync();
+        }
+
+        private ActivityTypeDto MapToDto(ActivityType activityType)
+        {
+            return new ActivityTypeDto
+            {
+                Id = activityType.Id,
+                Name_en = activityType.Name_en,
+                Name_ta = activityType.Name_ta,
+                Name_si = activityType.Name_si,
+                JsonMethod = activityType.JsonMethod,
+                MainActivityId = activityType.MainActivityId
+            };
+        }
+
+        private static string? NormalizeName(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            return value.Trim();
+        }
+    }
+}
