@@ -33,6 +33,9 @@ public class ApplicationDbContext : DbContext
     // --- The Bridge ---
     public DbSet<StudentProgress> StudentProgresses { get; set; }
 
+    // --- Payments ---
+    public DbSet<LevelPurchase> LevelPurchases { get; set; }
+
     // This is the method that finds and applies all your configuration classes
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
