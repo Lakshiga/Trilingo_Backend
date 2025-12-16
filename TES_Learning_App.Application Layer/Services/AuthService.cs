@@ -341,16 +341,19 @@ namespace TES_Learning_App.Application_Layer.Services
                     }
                 }
 
-                // Update user profile image URL
+                // Update user profile image URL (store the raw URL from upload)
                 user.ProfileImageUrl = imageUrl;
                 await _unitOfWork.UserRepository.UpdateAsync(user);
                 await _unitOfWork.CompleteAsync();
+
+                // Use GetFileUrl to return the properly formatted URL (same as GetUserProfileAsync)
+                var formattedImageUrl = _s3Service.GetFileUrl(imageUrl);
 
                 return new AuthResponseDto 
                 { 
                     IsSuccess = true, 
                     Message = "Profile image uploaded successfully",
-                    ProfileImageUrl = imageUrl
+                    ProfileImageUrl = formattedImageUrl
                 };
             }
             catch (Exception ex)

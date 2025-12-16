@@ -131,7 +131,19 @@ namespace TES_Learning_App.API
                     options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
                     // Keep default camelCase for serialization (outgoing)
                     options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+                })
+                .ConfigureApiBehaviorOptions(options =>
+                {
+                    // Configure file upload limits
+                    options.SuppressModelStateInvalidFilter = false;
                 });
+
+            // Configure file upload size limits globally
+            builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+            {
+                options.MultipartBodyLengthLimit = 10 * 1024 * 1024; // 10MB
+                options.ValueLengthLimit = 10 * 1024 * 1024; // 10MB
+            });
 
             builder.Services.AddOpenApi();
             builder.Services.AddEndpointsApiExplorer();
