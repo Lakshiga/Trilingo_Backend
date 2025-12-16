@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using TES_Learning_App.Application_Layer.DTOs.Chatbot;
 using TES_Learning_App.Application_Layer.Interfaces.IServices;
+using TES_Learning_App.Application_Layer.DTOs.ActivityType.Requests;
 
 namespace TES_Learning_App.Application_Layer.Services
 {
@@ -14,13 +15,15 @@ namespace TES_Learning_App.Application_Layer.Services
     {
         private readonly IConfiguration _configuration;
         private readonly ILogger<ChatbotService> _logger;
+        private readonly IActivityTypeService _activityTypeService;
         private readonly string _apiKey;
         private readonly string _knowledgeBasePath;
 
-        public ChatbotService(IConfiguration configuration, ILogger<ChatbotService> logger)
+        public ChatbotService(IConfiguration configuration, ILogger<ChatbotService> logger, IActivityTypeService activityTypeService)
         {
             _configuration = configuration;
             _logger = logger;
+            _activityTypeService = activityTypeService;
             _apiKey = _configuration["GoogleAI:ApiKey"] ?? string.Empty;
             
             // Log API key status (masked for security)
@@ -143,6 +146,9 @@ namespace TES_Learning_App.Application_Layer.Services
 
                 // Load knowledge base
                 var knowledgeBase = await LoadKnowledgeBaseAsync();
+                
+                // Load activity types information
+                var activityTypesInfo = await LoadActivityTypesInfoAsync();
 
                 // Build prompt with knowledge base context
                 var systemPrompt = $@"You are a helpful AI assistant for the Trilingo Admin Panel. 
@@ -152,13 +158,17 @@ You can also generate images when users request them using phrases like 'generat
 Knowledge Base:
 {knowledgeBase}
 
+Activity Types Information:
+{activityTypesInfo}
+
 Instructions:
-- Answer questions based on the knowledge base above
+- Answer questions based on the knowledge base and activity types information above
 - Be concise and helpful
 - If you don't know something, say so
 - Use a friendly, professional tone
 - Focus on helping with admin panel operations
-- You can generate images when requested";
+- You can generate images when requested
+- When asked about activity types, refer to the Activity Types Information section above";
 
                 var fullPrompt = $"{systemPrompt}\n\nUser Question: {request.Message}\n\nAssistant Response:";
 
@@ -505,6 +515,72 @@ Instructions:
             {
                 _logger.LogError(ex, "Error loading knowledge base");
                 return "Error loading knowledge base.";
+            }
+        }
+
+        private async Task<string> LoadActivityTypesInfoAsync()
+        {
+            try
+            {
+                var activityTypes = await _activityTypeService.GetAllAsync();
+                var activityTypesList = activityTypes.ToList();
+
+                if (!activityTypesList.Any())
+                {
+                    return "No activity types available.";
+                }
+
+                var infoBuilder = new StringBuilder();
+                infoBuilder.AppendLine("=== ACTIVITY TYPES INFORMATION ===");
+                infoBuilder.AppendLine();
+                infoBuilder.AppendLine("The following activity types are available in the system:");
+                infoBuilder.AppendLine();
+
+                foreach (var activityType in activityTypesList)
+                {
+                    infoBuilder.AppendLine($"--- Activity Type ID: {activityType.Id} (Render ID: {activityType.Id}) ---");
+                    infoBuilder.AppendLine($"English Name: {activityType.Name_en ?? "N/A"}");
+                    infoBuilder.AppendLine($"Tamil Name: {activityType.Name_ta ?? "N/A"}");
+                    infoBuilder.AppendLine($"Sinhala Name: {activityType.Name_si ?? "N/A"}");
+                    infoBuilder.AppendLine($"Main Activity ID: {activityType.MainActivityId}");
+                    
+                    if (!string.IsNullOrWhiteSpace(activityType.JsonMethod))
+                    {
+                        infoBuilder.AppendLine($"JSON Method:");
+                        try
+                        {
+                            // Try to format JSON for better readability
+                            var jsonDoc = JsonDocument.Parse(activityType.JsonMethod);
+                            var formattedJson = JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions 
+                            { 
+                                WriteIndented = true 
+                            });
+                            infoBuilder.AppendLine(formattedJson);
+                        }
+                        catch
+                        {
+                            // If JSON parsing fails, just output the raw string
+                            infoBuilder.AppendLine(activityType.JsonMethod);
+                        }
+                    }
+                    else
+                    {
+                        infoBuilder.AppendLine("JSON Method: Not configured");
+                    }
+                    
+                    infoBuilder.AppendLine();
+                }
+
+                infoBuilder.AppendLine("=== END OF ACTIVITY TYPES INFORMATION ===");
+                
+                _logger.LogInformation("Loaded {Count} activity types for chatbot knowledge base", activityTypesList.Count);
+                
+                return infoBuilder.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading activity types information for chatbot");
+                return "Error loading activity types information.";
             }
         }
 
