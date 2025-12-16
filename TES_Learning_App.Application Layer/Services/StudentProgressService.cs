@@ -81,6 +81,79 @@ namespace TES_Learning_App.Application_Layer.Services
             };
         }
         
+        public async Task<ExerciseResultResponseDto> SubmitExerciseAttemptAsync(Guid studentId, SubmitExerciseAttemptDto dto)
+        {
+            // Get the student
+            var student = await _unitOfWork.StudentRepository.GetByIdAsync(studentId);
+            if (student == null)
+                throw new Exception("Student not found.");
+
+            // Get the exercise to get the activity ID
+            var exercise = await _unitOfWork.ExerciseRepository.GetByIdAsync(dto.ExerciseId);
+            if (exercise == null)
+                throw new Exception("Exercise not found.");
+
+            // Check if student has already completed this exercise (first attempt recorded)
+            var existingProgress = await _unitOfWork.StudentProgressRepository
+                .FindAsync(sp => sp.StudentId == studentId && sp.ExerciseId == dto.ExerciseId);
+
+            // Check if student has attempted this exercise before
+            var existingAttempts = await _unitOfWork.Repository<ExerciseAttempt>()
+                .FindAsync(ea => ea.StudentId == studentId && ea.ExerciseId == dto.ExerciseId);
+
+            var isFirstAttempt = !existingAttempts.Any();
+            var pointsEarned = 0;
+
+            // Save the attempt regardless of whether it's first or subsequent
+            var exerciseAttempt = new ExerciseAttempt
+            {
+                StudentId = studentId,
+                ExerciseId = dto.ExerciseId,
+                Score = dto.Score,
+                IsFirstAttempt = isFirstAttempt,
+                CompletedAt = DateTime.UtcNow,
+                AttemptDetails = dto.AttemptDetails
+            };
+
+            await _unitOfWork.Repository<ExerciseAttempt>().AddAsync(exerciseAttempt);
+
+            // Only record progress and award points for the first attempt
+            if (isFirstAttempt)
+            {
+                // Cap the score at maximum 10 points
+                var cappedScore = Math.Min(dto.Score, 10);
+                
+                // Save the progress with the capped score
+                var studentProgress = new StudentProgress
+                {
+                    StudentId = studentId,
+                    ActivityId = exercise.ActivityId,
+                    ExerciseId = dto.ExerciseId,
+                    Score = cappedScore,
+                    CompletedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.StudentProgressRepository.AddAsync(studentProgress);
+
+                // Award XP points based on the capped score (1 point per score point)
+                pointsEarned = cappedScore;
+                student.XpPoints += pointsEarned;
+
+                await _unitOfWork.StudentRepository.UpdateAsync(student);
+            }
+            // For subsequent attempts, we don't update the progress or award points
+            // The first attempt score remains final
+
+            await _unitOfWork.CompleteAsync();
+
+            return new ExerciseResultResponseDto
+            {
+                PointsEarned = pointsEarned,
+                IsFirstAttempt = isFirstAttempt,
+                TotalXpPoints = student?.XpPoints ?? 0
+            };
+        }
+        
         // மாணவர் செயல்திறன் சுருக்கத்தைப் பெறும் செயல்பாடு
         public async Task<ProgressSummaryDto> GetStudentProgressSummaryAsync(Guid studentId)
         {
@@ -117,7 +190,7 @@ namespace TES_Learning_App.Application_Layer.Services
                     ActivityId = progress.ActivityId,
                     ActivityName = activity?.Name_en ?? "Unknown Activity",
                     Score = progress.Score,
-                    MaxScore = 100, // Assuming max score is 100
+                    MaxScore = 10, // Assuming max score is 10
                     CompletedAt = progress.CompletedAt
                 });
             }

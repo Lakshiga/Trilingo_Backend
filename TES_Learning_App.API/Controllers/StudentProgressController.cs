@@ -40,6 +40,24 @@ namespace TES_Learning_App.API.Controllers
             }
         }
         
+        /// <summary>
+        /// Submits an exercise attempt with proper scoring logic
+        /// </summary>
+        [HttpPost("submit-exercise-attempt/{studentId}")]
+        public async Task<IActionResult> SubmitExerciseAttempt(Guid studentId, SubmitExerciseAttemptDto dto)
+        {
+            try
+            {
+                // TODO: Validate that the parent has access to this student
+                var result = await _studentProgressService.SubmitExerciseAttemptAsync(studentId, dto);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { Message = ex.Message });
+            }
+        }
+        
         // மாணவர் செயல்திறன் சுருக்கத்தைப் பெறும் எண்ட்பாயிண்ட்
         [HttpGet("{studentId}/summary")]
         public async Task<IActionResult> GetStudentProgressSummary(Guid studentId)

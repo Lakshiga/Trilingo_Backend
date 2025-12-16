@@ -1,9 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace TES_Learning_App.Domain.Entities
 {
@@ -12,7 +9,11 @@ namespace TES_Learning_App.Domain.Entities
         [Key]
         public int Id { get; set; }
 
+        /// <summary>
+        /// The final score for this exercise (from first attempt)
+        /// </summary>
         [Required]
+        [Range(0, 10)]
         public int Score { get; set; }
 
         [Required]
