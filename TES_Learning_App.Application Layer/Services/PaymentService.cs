@@ -42,21 +42,10 @@ namespace TES_Learning_App.Application_Layer.Services
         {
             try
             {
-                // Validate level exists
-                var level = await _unitOfWork.LevelRepository.GetByIdAsync(request.LevelId);
-                if (level == null)
+                // Levels 1 and 2 are free
+                if (request.LevelId <= 2)
                 {
-                    return new PaymentSessionResponse
-                    {
-                        IsSuccess = false,
-                        Error = "Level not found"
-                    };
-                }
-
-                // Check if Level 1 (free)
-                if (request.LevelId == 1)
-                {
-                    // Level 1 is free, grant access directly
+                    // Check if user already has access record for this free level
                     var existingPurchase = await _unitOfWork.LevelPurchaseRepository
                         .FindAsync(lp => lp.UserId == userId && lp.LevelId == request.LevelId);
 
@@ -66,7 +55,7 @@ namespace TES_Learning_App.Application_Layer.Services
                         {
                             UserId = userId,
                             LevelId = request.LevelId,
-                            StripeSessionId = "FREE_LEVEL_1",
+                            StripeSessionId = $"FREE_LEVEL_{request.LevelId}",
                             PaymentStatus = "completed",
                             Amount = 0,
                             Currency = _stripeSettings.Currency,
@@ -81,8 +70,8 @@ namespace TES_Learning_App.Application_Layer.Services
                     return new PaymentSessionResponse
                     {
                         IsSuccess = true,
-                        Message = "Level 1 is free. Access granted.",
-                        SessionId = "FREE_LEVEL_1"
+                        Message = $"Level {request.LevelId} is free. Access granted.",
+                        SessionId = $"FREE_LEVEL_{request.LevelId}"
                     };
                 }
 
@@ -180,14 +169,14 @@ namespace TES_Learning_App.Application_Layer.Services
         {
             try
             {
-                // Level 1 is always free
-                if (levelId == 1)
+                // Levels 1 and 2 are always free for new users
+                if (levelId <= 2)
                 {
                     return new PaymentStatusResponse
                     {
                         IsSuccess = true,
                         HasAccess = true,
-                        Message = "Level 1 is free"
+                        Message = $"Level {levelId} is free"
                     };
                 }
 
